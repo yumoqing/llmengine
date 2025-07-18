@@ -1,0 +1,16 @@
+[Unit]
+Wants=systemd-networkd.service
+
+[Service]
+User=ymq
+Group=ymq
+Type=forking
+WorkingDirectory=/share/ymq/run/gemma3
+ExecStart=/share/ymq/run/gemma3/start.sh
+ExecStop=/share/ymq/run/gemma3/stop.sh
+StandardOutput=append:/var/log/gemma3/gemma3.log
+StandardError=append:/var/log/gemma3/gemma3.log
+SyslogIdentifier=gemma3
+
+[Install]
+WantedBy=multi-user.target

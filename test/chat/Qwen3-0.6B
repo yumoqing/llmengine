@@ -1,0 +1,3 @@
+#!/bin/bash
+
+~/models/tsfm.env/bin/python -m llmengine.server -p 9999 ~/models/Qwen/Qwen3-0.6B

@@ -1,0 +1,342 @@
+2025-06-09 08:13:26.400[llmengine][info][/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/auth_api.py:151]checkAuth() called ... request.path='/v1/chat/completions'
+2025-06-09 08:13:26.411[llmengine][debug][/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/functionProcessor.py:40]params_kw={'{\n"prompt":"who are you"\n}': ''}, args=[]
+2025-06-09 08:13:26.418[llmengine][exception][/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/auth_api.py:168]Exception=client(127.0.0.1) None access /v1/chat/completions cost 0.008466005325317383, (0.000392913818359375), except=name 'stream_response' is not defined
+Traceback (most recent call last):
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/auth_api.py", line 161, in checkAuth
+    ret = await handler(request)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/processorResource.py", line 351, in _handle
+    ret = await processor.handle(request)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/baseProcessor.py", line 95, in handle
+    await self.execute(request)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/baseProcessor.py", line 86, in execute
+    await self.datahandle(request)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/functionProcessor.py", line 46, in datahandle
+    x = await self.path_call(request, self.path)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/functionProcessor.py", line 42, in path_call
+    return await f(request, params_kw, *args)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/llmengine/server.py", line 42, in chat_completions
+    return await stream_response(request, gor)
+NameError: name 'stream_response' is not defined
+
+Traceback (most recent call last):
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/auth_api.py", line 161, in checkAuth
+    ret = await handler(request)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/processorResource.py", line 351, in _handle
+    ret = await processor.handle(request)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/baseProcessor.py", line 95, in handle
+    await self.execute(request)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/baseProcessor.py", line 86, in execute
+    await self.datahandle(request)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/functionProcessor.py", line 46, in datahandle
+    x = await self.path_call(request, self.path)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/functionProcessor.py", line 42, in path_call
+    return await f(request, params_kw, *args)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/llmengine/server.py", line 42, in chat_completions
+    return await stream_response(request, gor)
+NameError: name 'stream_response' is not defined
+
+2025-06-09 08:15:08.876[llmengine][info][/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/auth_api.py:151]checkAuth() called ... request.path='/v1/chat/completions'
+2025-06-09 08:15:08.884[llmengine][debug][/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/functionProcessor.py:40]params_kw={'{\n"prompt":"who are you"\n}': ''}, args=[]
+2025-06-09 08:15:08.891[llmengine][exception][/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/auth_api.py:168]Exception=client(127.0.0.1) None access /v1/chat/completions cost 0.005657672882080078, (9.679794311523438e-05), except=get_session() missing 1 required positional argument: 'request'
+Traceback (most recent call last):
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/auth_api.py", line 161, in checkAuth
+    ret = await handler(request)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/processorResource.py", line 351, in _handle
+    ret = await processor.handle(request)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/baseProcessor.py", line 95, in handle
+    await self.execute(request)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/baseProcessor.py", line 86, in execute
+    await self.datahandle(request)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/functionProcessor.py", line 46, in datahandle
+    x = await self.path_call(request, self.path)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/functionProcessor.py", line 42, in path_call
+    return await f(request, params_kw, *args)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/llmengine/server.py", line 43, in chat_completions
+    return await stream_response(request, gor)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/globalEnv.py", line 58, in stream_response
+    async for d in async_data_generator():
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/llmengine/server.py", line 31, in gor
+    session = await get_session()
+TypeError: get_session() missing 1 required positional argument: 'request'
+
+Traceback (most recent call last):
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/auth_api.py", line 161, in checkAuth
+    ret = await handler(request)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/processorResource.py", line 351, in _handle
+    ret = await processor.handle(request)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/baseProcessor.py", line 95, in handle
+    await self.execute(request)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/baseProcessor.py", line 86, in execute
+    await self.datahandle(request)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/functionProcessor.py", line 46, in datahandle
+    x = await self.path_call(request, self.path)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/functionProcessor.py", line 42, in path_call
+    return await f(request, params_kw, *args)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/llmengine/server.py", line 43, in chat_completions
+    return await stream_response(request, gor)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/globalEnv.py", line 58, in stream_response
+    async for d in async_data_generator():
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/llmengine/server.py", line 31, in gor
+    session = await get_session()
+TypeError: get_session() missing 1 required positional argument: 'request'
+
+2025-06-09 08:19:30.169[llmengine][info][/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/auth_api.py:151]checkAuth() called ... request.path='/v1/chat/completions'
+2025-06-09 08:19:30.177[llmengine][debug][/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/functionProcessor.py:40]params_kw={'{\n"prompt":"who are you"\n}': ''}, args=[]
+2025-06-09 08:19:30.223[llmengine][exception][/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/auth_api.py:168]Exception=client(127.0.0.1) None access /v1/chat/completions cost 0.03934144973754883, (0.00010514259338378906), except='None' has no attribute 'startswith'
+Traceback (most recent call last):
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/auth_api.py", line 161, in checkAuth
+    ret = await handler(request)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/processorResource.py", line 351, in _handle
+    ret = await processor.handle(request)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/baseProcessor.py", line 95, in handle
+    await self.execute(request)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/baseProcessor.py", line 86, in execute
+    await self.datahandle(request)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/functionProcessor.py", line 46, in datahandle
+    x = await self.path_call(request, self.path)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/functionProcessor.py", line 42, in path_call
+    return await f(request, params_kw, *args)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/llmengine/server.py", line 45, in chat_completions
+    return await stream_response(request, gor)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/globalEnv.py", line 58, in stream_response
+    async for d in async_data_generator():
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/llmengine/server.py", line 41, in gor
+    async for d in engine.async_stream_generate(session, params_kw.prompt, **kwargs):
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/llmengine/base_chat_llm.py", line 112, in async_stream_generate
+    for d in self._generator(session, prompt,
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/llmengine/base_chat_llm.py", line 66, in _generator
+    for d in self._gen(messages):
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/llmengine/base_chat_llm.py", line 137, in _gen
+    inputs = self._messages2inputs(messages)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/llmengine/qwen3.py", line 32, in _messages2inputs
+    text = self.tokenizer.apply_chat_template(
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/transformers/tokenization_utils_base.py", line 1695, in apply_chat_template
+    rendered_chat = compiled_template.render(
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/jinja2/environment.py", line 1295, in render
+    self.environment.handle_exception()
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/jinja2/environment.py", line 942, in handle_exception
+    raise rewrite_traceback_stack(source=source)
+  File "<template>", line 20, in top-level template code
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/jinja2/sandbox.py", line 399, in call
+    if not __self.is_safe_callable(__obj):
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/jinja2/sandbox.py", line 265, in is_safe_callable
+    getattr(obj, "unsafe_callable", False) or getattr(obj, "alters_data", False)
+jinja2.exceptions.UndefinedError: 'None' has no attribute 'startswith'
+
+Traceback (most recent call last):
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/auth_api.py", line 161, in checkAuth
+    ret = await handler(request)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/processorResource.py", line 351, in _handle
+    ret = await processor.handle(request)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/baseProcessor.py", line 95, in handle
+    await self.execute(request)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/baseProcessor.py", line 86, in execute
+    await self.datahandle(request)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/functionProcessor.py", line 46, in datahandle
+    x = await self.path_call(request, self.path)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/functionProcessor.py", line 42, in path_call
+    return await f(request, params_kw, *args)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/llmengine/server.py", line 45, in chat_completions
+    return await stream_response(request, gor)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/globalEnv.py", line 58, in stream_response
+    async for d in async_data_generator():
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/llmengine/server.py", line 41, in gor
+    async for d in engine.async_stream_generate(session, params_kw.prompt, **kwargs):
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/llmengine/base_chat_llm.py", line 112, in async_stream_generate
+    for d in self._generator(session, prompt,
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/llmengine/base_chat_llm.py", line 66, in _generator
+    for d in self._gen(messages):
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/llmengine/base_chat_llm.py", line 137, in _gen
+    inputs = self._messages2inputs(messages)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/llmengine/qwen3.py", line 32, in _messages2inputs
+    text = self.tokenizer.apply_chat_template(
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/transformers/tokenization_utils_base.py", line 1695, in apply_chat_template
+    rendered_chat = compiled_template.render(
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/jinja2/environment.py", line 1295, in render
+    self.environment.handle_exception()
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/jinja2/environment.py", line 942, in handle_exception
+    raise rewrite_traceback_stack(source=source)
+  File "<template>", line 20, in top-level template code
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/jinja2/sandbox.py", line 399, in call
+    if not __self.is_safe_callable(__obj):
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/jinja2/sandbox.py", line 265, in is_safe_callable
+    getattr(obj, "unsafe_callable", False) or getattr(obj, "alters_data", False)
+jinja2.exceptions.UndefinedError: 'None' has no attribute 'startswith'
+
+2025-06-09 08:28:03.514[llmengine][info][/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/auth_api.py:151]checkAuth() called ... request.path='/v1/chat/completions'
+2025-06-09 08:28:03.522[llmengine][debug][/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/functionProcessor.py:40]params_kw={'{\n"prompt":"who are you"\n}': ''}, args=[]
+2025-06-09 08:28:03.526[llmengine][debug][/share/vllm-0.8.5/lib/python3.10/site-packages/llmengine/qwen3.py:33]messages=[{'role': 'user', 'content': None}]
+2025-06-09 08:28:03.579[llmengine][exception][/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/auth_api.py:168]Exception=client(127.0.0.1) None access /v1/chat/completions cost 0.05059671401977539, (0.00011324882507324219), except='None' has no attribute 'startswith'
+Traceback (most recent call last):
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/auth_api.py", line 161, in checkAuth
+    ret = await handler(request)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/processorResource.py", line 351, in _handle
+    ret = await processor.handle(request)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/baseProcessor.py", line 95, in handle
+    await self.execute(request)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/baseProcessor.py", line 86, in execute
+    await self.datahandle(request)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/functionProcessor.py", line 46, in datahandle
+    x = await self.path_call(request, self.path)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/functionProcessor.py", line 42, in path_call
+    return await f(request, params_kw, *args)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/llmengine/server.py", line 45, in chat_completions
+    return await stream_response(request, gor)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/globalEnv.py", line 58, in stream_response
+    async for d in async_data_generator():
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/llmengine/server.py", line 41, in gor
+    async for d in engine.async_stream_generate(session, params_kw.prompt, **kwargs):
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/llmengine/base_chat_llm.py", line 112, in async_stream_generate
+    for d in self._generator(session, prompt,
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/llmengine/base_chat_llm.py", line 66, in _generator
+    for d in self._gen(messages):
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/llmengine/base_chat_llm.py", line 137, in _gen
+    inputs = self._messages2inputs(messages)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/llmengine/qwen3.py", line 34, in _messages2inputs
+    text = self.tokenizer.apply_chat_template(
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/transformers/tokenization_utils_base.py", line 1695, in apply_chat_template
+    rendered_chat = compiled_template.render(
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/jinja2/environment.py", line 1295, in render
+    self.environment.handle_exception()
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/jinja2/environment.py", line 942, in handle_exception
+    raise rewrite_traceback_stack(source=source)
+  File "<template>", line 20, in top-level template code
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/jinja2/sandbox.py", line 399, in call
+    if not __self.is_safe_callable(__obj):
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/jinja2/sandbox.py", line 265, in is_safe_callable
+    getattr(obj, "unsafe_callable", False) or getattr(obj, "alters_data", False)
+jinja2.exceptions.UndefinedError: 'None' has no attribute 'startswith'
+
+Traceback (most recent call last):
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/auth_api.py", line 161, in checkAuth
+    ret = await handler(request)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/processorResource.py", line 351, in _handle
+    ret = await processor.handle(request)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/baseProcessor.py", line 95, in handle
+    await self.execute(request)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/baseProcessor.py", line 86, in execute
+    await self.datahandle(request)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/functionProcessor.py", line 46, in datahandle
+    x = await self.path_call(request, self.path)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/functionProcessor.py", line 42, in path_call
+    return await f(request, params_kw, *args)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/llmengine/server.py", line 45, in chat_completions
+    return await stream_response(request, gor)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/globalEnv.py", line 58, in stream_response
+    async for d in async_data_generator():
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/llmengine/server.py", line 41, in gor
+    async for d in engine.async_stream_generate(session, params_kw.prompt, **kwargs):
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/llmengine/base_chat_llm.py", line 112, in async_stream_generate
+    for d in self._generator(session, prompt,
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/llmengine/base_chat_llm.py", line 66, in _generator
+    for d in self._gen(messages):
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/llmengine/base_chat_llm.py", line 137, in _gen
+    inputs = self._messages2inputs(messages)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/llmengine/qwen3.py", line 34, in _messages2inputs
+    text = self.tokenizer.apply_chat_template(
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/transformers/tokenization_utils_base.py", line 1695, in apply_chat_template
+    rendered_chat = compiled_template.render(
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/jinja2/environment.py", line 1295, in render
+    self.environment.handle_exception()
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/jinja2/environment.py", line 942, in handle_exception
+    raise rewrite_traceback_stack(source=source)
+  File "<template>", line 20, in top-level template code
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/jinja2/sandbox.py", line 399, in call
+    if not __self.is_safe_callable(__obj):
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/jinja2/sandbox.py", line 265, in is_safe_callable
+    getattr(obj, "unsafe_callable", False) or getattr(obj, "alters_data", False)
+jinja2.exceptions.UndefinedError: 'None' has no attribute 'startswith'
+
+2025-06-09 08:31:48.954[llmengine][info][/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/auth_api.py:151]checkAuth() called ... request.path='/v1/chat/completions'
+2025-06-09 08:31:48.961[llmengine][debug][/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/functionProcessor.py:40]params_kw={'{\n"prompt":"who are you"\n}': ''}, args=[]
+2025-06-09 08:31:48.964[llmengine][debug][/share/vllm-0.8.5/lib/python3.10/site-packages/llmengine/server.py:29]params_kw={'{\n"prompt":"who are you"\n}': ''}, params=(), kw={}
+2025-06-09 08:31:48.968[llmengine][debug][/share/vllm-0.8.5/lib/python3.10/site-packages/llmengine/qwen3.py:33]messages=[{'role': 'user', 'content': None}]
+2025-06-09 08:31:49.009[llmengine][exception][/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/auth_api.py:168]Exception=client(127.0.0.1) None access /v1/chat/completions cost 0.04324674606323242, (8.392333984375e-05), except='None' has no attribute 'startswith'
+Traceback (most recent call last):
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/auth_api.py", line 161, in checkAuth
+    ret = await handler(request)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/processorResource.py", line 351, in _handle
+    ret = await processor.handle(request)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/baseProcessor.py", line 95, in handle
+    await self.execute(request)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/baseProcessor.py", line 86, in execute
+    await self.datahandle(request)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/functionProcessor.py", line 46, in datahandle
+    x = await self.path_call(request, self.path)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/functionProcessor.py", line 42, in path_call
+    return await f(request, params_kw, *args)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/llmengine/server.py", line 46, in chat_completions
+    return await stream_response(request, gor)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/globalEnv.py", line 58, in stream_response
+    async for d in async_data_generator():
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/llmengine/server.py", line 42, in gor
+    async for d in engine.async_stream_generate(session, params_kw.prompt, **kwargs):
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/llmengine/base_chat_llm.py", line 112, in async_stream_generate
+    for d in self._generator(session, prompt,
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/llmengine/base_chat_llm.py", line 66, in _generator
+    for d in self._gen(messages):
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/llmengine/base_chat_llm.py", line 137, in _gen
+    inputs = self._messages2inputs(messages)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/llmengine/qwen3.py", line 34, in _messages2inputs
+    text = self.tokenizer.apply_chat_template(
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/transformers/tokenization_utils_base.py", line 1695, in apply_chat_template
+    rendered_chat = compiled_template.render(
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/jinja2/environment.py", line 1295, in render
+    self.environment.handle_exception()
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/jinja2/environment.py", line 942, in handle_exception
+    raise rewrite_traceback_stack(source=source)
+  File "<template>", line 20, in top-level template code
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/jinja2/sandbox.py", line 399, in call
+    if not __self.is_safe_callable(__obj):
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/jinja2/sandbox.py", line 265, in is_safe_callable
+    getattr(obj, "unsafe_callable", False) or getattr(obj, "alters_data", False)
+jinja2.exceptions.UndefinedError: 'None' has no attribute 'startswith'
+
+Traceback (most recent call last):
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/auth_api.py", line 161, in checkAuth
+    ret = await handler(request)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/processorResource.py", line 351, in _handle
+    ret = await processor.handle(request)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/baseProcessor.py", line 95, in handle
+    await self.execute(request)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/baseProcessor.py", line 86, in execute
+    await self.datahandle(request)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/functionProcessor.py", line 46, in datahandle
+    x = await self.path_call(request, self.path)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/functionProcessor.py", line 42, in path_call
+    return await f(request, params_kw, *args)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/llmengine/server.py", line 46, in chat_completions
+    return await stream_response(request, gor)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/globalEnv.py", line 58, in stream_response
+    async for d in async_data_generator():
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/llmengine/server.py", line 42, in gor
+    async for d in engine.async_stream_generate(session, params_kw.prompt, **kwargs):
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/llmengine/base_chat_llm.py", line 112, in async_stream_generate
+    for d in self._generator(session, prompt,
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/llmengine/base_chat_llm.py", line 66, in _generator
+    for d in self._gen(messages):
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/llmengine/base_chat_llm.py", line 137, in _gen
+    inputs = self._messages2inputs(messages)
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/llmengine/qwen3.py", line 34, in _messages2inputs
+    text = self.tokenizer.apply_chat_template(
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/transformers/tokenization_utils_base.py", line 1695, in apply_chat_template
+    rendered_chat = compiled_template.render(
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/jinja2/environment.py", line 1295, in render
+    self.environment.handle_exception()
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/jinja2/environment.py", line 942, in handle_exception
+    raise rewrite_traceback_stack(source=source)
+  File "<template>", line 20, in top-level template code
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/jinja2/sandbox.py", line 399, in call
+    if not __self.is_safe_callable(__obj):
+  File "/share/vllm-0.8.5/lib/python3.10/site-packages/jinja2/sandbox.py", line 265, in is_safe_callable
+    getattr(obj, "unsafe_callable", False) or getattr(obj, "alters_data", False)
+jinja2.exceptions.UndefinedError: 'None' has no attribute 'startswith'
+
+2025-06-09 08:37:22.471[llmengine][info][/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/auth_api.py:151]checkAuth() called ... request.path='/v1/chat/completions'
+2025-06-09 08:37:22.479[llmengine][debug][/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/functionProcessor.py:40]params_kw={'prompt': 'who are you'}, args=[]
+2025-06-09 08:37:22.483[llmengine][debug][/share/vllm-0.8.5/lib/python3.10/site-packages/llmengine/server.py:29]params_kw={'prompt': 'who are you'}, params=(), kw={}
+2025-06-09 08:37:22.486[llmengine][debug][/share/vllm-0.8.5/lib/python3.10/site-packages/llmengine/qwen3.py:33]messages=[{'role': 'user', 'content': 'who are you'}]
+2025-06-09 08:48:12.725[llmengine][info][/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/auth_api.py:151]checkAuth() called ... request.path='/v1/chat/completions'
+2025-06-09 08:48:12.735[llmengine][debug][/share/vllm-0.8.5/lib/python3.10/site-packages/ahserver/functionProcessor.py:40]params_kw={'prompt': 'who are you'}, args=[]
+2025-06-09 08:48:12.738[llmengine][debug][/share/vllm-0.8.5/lib/python3.10/site-packages/llmengine/server.py:29]params_kw={'prompt': 'who are you'}, params=(), kw={}
+2025-06-09 08:48:12.742[llmengine][debug][/share/vllm-0.8.5/lib/python3.10/site-packages/llmengine/qwen3.py:33]messages=[{'role': 'user', 'content': 'who are you'}]

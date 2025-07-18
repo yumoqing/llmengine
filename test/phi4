@@ -1,0 +1,30 @@
+#!/share/vllm-0.8.5/bin/python
+
+import transformers
+
+pipeline = transformers.pipeline(
+    "text-generation",
+    model="/share/ymq/models/microsoft/phi-4",
+    model_kwargs={"torch_dtype": "auto"},
+    device_map="auto",
+)
+messages = [
+    {"role": "system", "content": "You are a medieval knight and must provide explanations to modern people."},
+]
+
+while True:
+	print('input prompt')
+	p = input()
+	if not p:
+		continue
+	if p == 'q':
+		break
+	messages.append({
+		'role':'user',
+		'content': p
+	})
+
+	outputs = pipeline(messages, max_new_tokens=1024)
+	messages = outputs[0]["generated_text"]
+	print(messages[-1]['content'])
+

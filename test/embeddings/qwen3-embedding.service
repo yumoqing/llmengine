@@ -1,0 +1,48 @@
+[Unit]
+Description=A Embedding Service using Qwen3-Embedding-0.6B
+# After=network.target DeepSeek70B-kyyds671b-ray.service
+# Requires=DeepSeek70B-kyyds671b-ray.service
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+# 核心启动参数（保持原有配置）
+User=ymq
+Group=ymq
+WorkingDirectory=/share/ymq/run/embeddings
+#定义环境变量，所有节点的启动脚本与服务需一致
+#Environment="NCCL_SOCKET_IFNAME=enp196s0f0np0"
+#ExecStartPre=/data/kyyds671b/ray_check.sh
+ExecStart=/share/ymq/run/embeddings/start.sh
+ExecStop=/share/ymq/run/embeddings/stop.sh
+
+# 超时与停止控制（新增部分）
+# 启动超时延长至 120 秒
+# TimeoutStartSec=120
+# 停止等待时间 30 秒
+# TimeoutStopSec=30
+# 优先发送 SIGINT 信号（更适合 Python 程序）
+# KillSignal=SIGINT
+# 最终强制终止信号
+# RestartKillSignal=SIGKILL
+# 混合终止模式
+# KillMode=mixed
+# 重启策略
+# Restart=on-failure
+# RestartSec=10s
+# 服务管理（保持原有配置+增强）
+#Restart=always
+#RestartSec=10                    # 重启间隔从 5 秒调整为 10 秒
+#append 是继续写入相当于>>  file是从新写入 相当于>
+StandardOutput=append:/var/log/embeddings/embeddings.log
+StandardError=append:/var/log/embeddings/error.log
+SyslogIdentifier=embeddings
+# 资源限制（保持可选配置）
+#LimitNOFILE=65536
+#LimitNPROC=65536
+# GPU 支持
+#Environment=CUDA_VISIBLE_DEVICES=0,1
+
+[Install]
+WantedBy=multi-user.target
+

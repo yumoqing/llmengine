@@ -1,0 +1,3 @@
+#!/bin/bash
+
+~/models/tsfm.env/bin/python -m llmengine.embedding -w ~/models/tsfm -p 9998 ~/models/Qwen/Qwen3-Embedding-0.6B

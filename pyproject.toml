@@ -1,0 +1,24 @@
+[project]
+name="llmengine"
+version = "0.0.1"
+description = "Your project description"
+authors = [{ name = "yu moqing", email = "yumoqing@gmail.com" }]
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+dependencies = [
+	"torch",
+	"transformers",
+	"sentence-transformers>=2.7.0",
+	# "flash_attention_2",
+	"mistral-common",
+	"accelerate"
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "black", "mypy"]
+
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+

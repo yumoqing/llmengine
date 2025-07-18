@@ -1,0 +1,27 @@
+#!/share/vllm-0.8.5/bin/python
+import os
+import sys
+import argparse
+
+def get_args():
+	parser = argparse.ArgumentParser(description="Example script using argparse")
+	parser.add_argument('--gpus', '-g', type=str, required=False, default='0', help='Identify GPU id, default is 0, comma split')
+	parser.add_argument("--stream", action="store_true", help="是否流式输出", default=True)
+	parser.add_argument('modelpath', type=str, help='Path to model folder')
+	args = parser.parse_args()
+	return args
+
+def main():
+	args = get_args()
+	os.environ['CUDA_VISIBLE_DEVICES'] = args.gpus
+	os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
+	gpus = args.gpus.split(',')
+	cnt=len(gpus)
+	stream=' --stream' if args.stream else ' '
+	cmdline = f'/share/vllm-0.8.5/bin/python -m llmengine.chatllm --model {args.modelpath} --gpus {cnt} {stream}'
+	print(args, cmdline)
+	os.system(cmdline)
+
+if __name__ == '__main__':
+	main()
+
