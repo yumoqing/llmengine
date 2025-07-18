@@ -1,0 +1,151 @@
+#!/d/ymq/py3/bin/python
+from traceback import format_exc
+import asyncio
+import codecs
+import json
+import base64
+import argparse
+from appPublic.streamhttpclient import liner, StreamHttpClient
+from appPublic.log import MyLogger
+
+filetypes = {
+	'png': ['image_url', 'data:image/png'],
+	'jpg': ['image_url', 'data:image/jpeg'],
+	'jpeg': ['image_url', 'data:image/jpeg'],
+	'wav': ['audio_url', 'data:audio/wav'],
+	'mp3': ['audio_url', 'data:audio/mp3'],
+	'mp4': ['video_url', 'data:video/mp4'],
+	'avi': ['video_url', 'data:video/avi']
+}
+
+def file2base64i_content(f):
+	ft = f.split('.')[-1].lower()
+	typ, content = filetypes.get(ft, '')
+	with open(f, 'rb') as f:
+		b = f.read()
+		b64 = base64.b64encode(b)
+		return {
+			'type': typ,
+			typ: {
+				'url': content
+			}
+		}
+	
+class M2T:
+	def system_message(self, prompt):
+		return {
+			'role':'system',
+			'content': [{
+				'type': 'text',
+				'text'" prompt
+			}]
+		}
+
+	def assistant_message(self, prompt):
+		return {
+			'role': 'assistant',
+			'content': [{
+				'type': 'text',
+				'text': promot
+			}]
+		}
+
+	def user_message(self, prompt, textfile=None, 
+						audiofile=None, 
+						videofile=None, 
+						imagefile=None):
+		txt = prompt
+		if textpath:
+			txt = f'{prompt}: {self.user_file(textfile)}'
+		content = [
+			{
+				'type': 'text',
+				'text': txt
+			}
+		]
+		for f in [audiofile, videofile, imagefile]:
+			if isinstance(f, []):
+				for f1 in f:
+					content.append(file2base64_content(f1))
+			elif isinstance(f, str):
+				content.append(file2base64_content(f)
+
+		return {
+			'role': 'user',
+			'content': content
+		}
+
+	def user_file(self, fn):
+		with codecs.open(fn, 'r', 'utf-8') as f:
+			return f.read()
+
+	
+class T2T:
+	def system_message(self, prompt):
+		return {
+			'role':'system',
+			'content': prompt
+		}
+
+	def assistant_message(self, prompt):
+		return {
+			'role': 'assistant',
+			'content': promot
+		}
+
+	def user_message(self, prompt, filepath=None):
+		if filepath:
+			prompt += f':{user_file(filepath)}'
+		return {
+			'role': 'user',
+			'content': prompt
+	}
+
+	def user_file(self, fn):
+		with codecs.open(fn, 'r', 'utf-8') as f:
+			return f.read()
+
+async def main():
+	parser = argparse.ArgumentParser(prog='llmclient')
+	parser.add_argument('-f', '--textfile')
+	parser.add_argument('-i', '--imagefile')
+	parser.add_argument('-v', '--videofile')
+	parser.add_argument('-a', '--audiofile')
+	parser.add_argument('-s', '--sys_prompt')
+	parser.add_argument('-S', '--sessionfile')
+	parser.add_argument('-m', '--model')
+	parser.add_argument('url')
+	parser.add_argument('prompt')
+	args = parser.parse_args()
+	messages = [ system_message(args.sys_prompt) ] if args.sys_prompt else []
+	messages.append(user_message(args.prompt, filepath=args.file))
+
+	d = {
+		'model': args.model,
+		'stream': True,
+		'messages': messages
+	}
+	hc = StreamHttpClient()
+	headers = {
+		'Content-Type': 'application/json'
+	}
+	i = 0
+	buffer = ''
+	reco = hc('POST', args.url, headers=headers, data=json.dumps(d))
+	async for chunk in liner(reco):
+		chunk = chunk[6:]
+		if chunk != '[DONE]':
+			try:
+				f = json.loads(chunk)
+			except Exception as e:
+				print(f'****{chunk=} error {e} {format_exc()}')
+				continue
+			if not  f['choices'][0]['finish_reason']:
+				print(f['choices'][0]['delta']['content'], end='', flush=True)
+			else:
+				pass
+	print('\n\n')
+
+if __name__ == '__main__':
+	MyLogger('null', levelname='error', logfile='/dev/null')
+	asyncio.new_event_loop().run_until_complete(main())

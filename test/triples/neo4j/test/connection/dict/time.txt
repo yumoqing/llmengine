@@ -1,0 +1,7 @@
+48	c93f4c3c-dcff-43b6-bdb1-6a9db23ff582
+Natural machine	c93f4c3c-dcff-43b6-bdb1-6a9db23ff582
+ReverbMapping	c93f4c3c-dcff-43b6-bdb1-6a9db23ff582
+变量映射到最终的逻辑形式	c93f4c3c-dcff-43b6-bdb1-6a9db23ff582
+查询	c93f4c3c-dcff-43b6-bdb1-6a9db23ff582
+正确答案集 A的查询语句 y的逻辑形式 z	c93f4c3c-dcff-43b6-bdb1-6a9db23ff582
+结构表示的	c93f4c3c-dcff-43b6-bdb1-6a9db23ff582

@@ -1,0 +1,50 @@
+{
+	"filesroot":"$[workdir]$/files",
+	"logger":{
+		"name":"llmengine",
+		"levelname":"info",
+		"logfile":"$[workdir]$/logs/llmengine.log"
+	},
+	"website":{
+		"paths":[
+			["$[workdir]$/wwwroot",""]
+		],
+		"client_max_size":10000,
+		"host":"0.0.0.0",
+		"port":9995,
+		"coding":"utf-8",
+		"indexes":[
+			"index.html",
+			"index.ui"
+		],
+		"startswiths":[
+			{
+				"leading":"/idfile",
+				"registerfunction":"idfile"
+			},{
+				"leading": "/v1/embeddings",
+				"registerfunction": "embeddings"
+			},{
+				"leading": "/docs",
+				"registerfunction": "docs"
+			}
+		],
+		"processors":[
+			[".tmpl","tmpl"],
+			[".app","app"],
+			[".ui","bui"],
+			[".dspy","dspy"],
+			[".md","md"]
+		],
+		"rsakey_oops":{
+			"privatekey":"$[workdir]$/conf/rsa_private_key.pem",
+			"publickey":"$[workdir]$/conf/rsa_public_key.pem"
+		},
+		"session_max_time":3000,
+		"session_issue_time":2500,
+		"session_redis_notuse":{
+			"url":"redis://127.0.0.1:6379"
+		}
+	}
+}
+
