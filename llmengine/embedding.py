@@ -3,6 +3,7 @@ import os
 import sys
 import argparse
 from llmengine.qwen3embedding import *
+from llmengine.bgeembedding import *
 from llmengine.base_embedding import get_llm_class
 
 from appPublic.registerfunction import RegisterFunction

@@ -21,23 +21,17 @@ def init():
 	rf.register('chat_completions', chat_completions)
 
 async def chat_completions(request, params_kw, *params, **kw):
+	se = ServerEnv()
+	engine = se.engine
 	async def gor():
-		se = ServerEnv()
-		engine = se.chat_engine
-		session = await get_session(request)
-		kwargs = {
-		}
-		if params_kw.image_path:
-			kwargs['image_path'] = fs.reapPath(params_kw.image_path)
-		if params_kw.video_path:
-			kwargs['video_path'] = fs.reapPath(params_kw.video_path)
-		if params_kw.audio_path:
-			kwargs['audio_path'] = fs.reapPath(params_kw.audio_path)
-		async for d in engine.async_stream_generate(session, params_kw.prompt, **kwargs):
+		async for d in engine.chat_completion_stream(params_kw.messages):
 			debug(f'{d=}')
 			yield d
 
-	return await stream_response(request, gor)
+	if params_kw.stream:
+		return await stream_response(request, gor)
+	else:
+		return await engine.chat_completion(params_kw.messages)
 
 def main():
 	parser = argparse.ArgumentParser(prog="Sage")

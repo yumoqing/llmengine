@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 
 model_pathMap = {
 }
@@ -20,14 +21,19 @@ class BaseEmbedding:
 			device = torch.device("mps")
 			self.model = self.model.to(device)
 
-	def embeddings(self, input):
+	def encode(self, input):
 		es = self.model.encode(input)
+
+	def embeddings(self, input):
+		es = self.encode(input)
 		data = []
 		for i, e in enumerate(es):
+			if isinstance(e, np.ndarray):
+				r = e.tolist()
 			d = {
 				"object": "embedding",
 				"index": i,
-				"embedding": e.tolist()
+				"embedding": e
 			}
 			data.append(d)
 		return {

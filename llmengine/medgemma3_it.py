@@ -4,11 +4,11 @@ from transformers import AutoProcessor, AutoModelForImageTextToText
 from PIL import Image
 import requests
 import torch
-from llmengine.base_chat_llm import MMChatLLM, llm_register
+from llmengine.base_chat_llm import BaseChatLLM, llm_register
 
 model_id = "google/medgemma-4b-it"
 
-class MedgemmaLLM(MMChatLLM):
+class MedgemmaLLM(BaseChatLLM):
 	def __init__(self, model_id):
 		self.model = AutoModelForImageTextToText.from_pretrained(
 			model_id,
