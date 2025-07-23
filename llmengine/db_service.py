@@ -276,33 +276,17 @@ async def insert_document(request, params_kw, *params, **kw):
     debug(f'Received params: {params_kw=}')
     se = ServerEnv()
     engine = se.engine
-    userid = params_kw.get('userid', '')
-    knowledge_base_id = params_kw.get('knowledge_base_id', '')
-    document_id = params_kw.get('document_id', '')
-    texts = params_kw.get('texts', [])
-    embeddings = params_kw.get('embeddings', [])
-    filename = params_kw.get('filename', '')
-    file_path = params_kw.get('file_path', '')
-    upload_time = params_kw.get('upload_time', '')
-    file_type = params_kw.get('file_type', '')
+    chunks = params_kw.get('chunks', '')
     db_type = params_kw.get('db_type', '')
     collection_name = "ragdb" if not db_type else f"ragdb_{db_type}"
     try:
-        required_fields = ['userid', 'knowledge_base_id', 'texts', 'embeddings']
+        required_fields = ['chunks']
         missing_fields = [field for field in required_fields if field not in params_kw or not params_kw[field]]
         if missing_fields:
             raise ValueError(f"缺少必填字段: {', '.join(missing_fields)}")
 
         result = await engine.handle_connection("insert_document", {
-            "userid": userid,
-            "knowledge_base_id": knowledge_base_id,
-            "document_id": document_id,
-            "texts": texts,
-            "embeddings": embeddings,
-            "filename": filename,
-            "file_path": file_path,
-            "upload_time": upload_time,
-            "file_type": file_type,
+            "chunks": chunks,
             "db_type": db_type
         })
         debug(f'Insert result: {result=}')

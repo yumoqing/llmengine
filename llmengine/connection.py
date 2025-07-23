@@ -1,4 +1,4 @@
-import milvus_connection
+import llmengine.milvus_connection
 from traceback import format_exc
 import argparse
 from aiohttp import web
@@ -403,8 +403,8 @@ async def delete_file(request, params_kw, *params, **kw):
         result = await engine.handle_connection("delete_document", {
             "userid": userid,
             "filename": filename,
-            "db_type": db_type,
-            "knowledge_base_id": knowledge_base_id
+            "knowledge_base_id": knowledge_base_id,
+            "db_type": db_type
         })
         debug(f'Delete result: {result=}')
         status = 200 if result.get("status") == "success" else 400
@@ -454,60 +454,15 @@ async def delete_knowledge_base(request, params_kw, *params, **kw):
             "status_code": 400
         }, dumps=lambda obj: json.dumps(obj, ensure_ascii=False), status=400)
 
-async def fused_search_query(request, params_kw, *params, **kw):
-    debug(f'{params_kw=}')
-    se = ServerEnv()
-    engine = se.engine
-    query = params_kw.get('query')
-    userid = params_kw.get('userid')
-    db_type = params_kw.get('db_type', '')
-    knowledge_base_ids = params_kw.get('knowledge_base_ids')
-    limit = params_kw.get('limit')
-    offset = params_kw.get('offset', 0)
-    use_rerank = params_kw.get('use_rerank', True)
-    collection_name = "ragdb" if not db_type else f"ragdb_{db_type}"
-    try:
-        if not all([query, userid, knowledge_base_ids]):
-            debug(f'query, userid 或 knowledge_base_ids 未提供')
-            return web.json_response({
-                "status": "error",
-                "message": "query, userid 或 knowledge_base_ids 未提供",
-                "collection_name": collection_name
-            }, dumps=lambda obj: json.dumps(obj, ensure_ascii=False), status=400)
-        result = await engine.handle_connection("fused_search", {
-            "query": query,
-            "userid": userid,
-            "db_type": db_type,
-            "knowledge_base_ids": knowledge_base_ids,
-            "limit": limit,
-            "offset": offset,
-            "use_rerank": use_rerank
-        })
-        debug(f'{result=}')
-        response = {
-            "status": "success",
-            "results": result.get("results", []),
-            "timing": result.get("timing", {}),
-            "collection_name": collection_name
-        }
-        return web.json_response(response, dumps=lambda obj: json.dumps(obj, ensure_ascii=False))
-    except Exception as e:
-        error(f'融合搜索失败: {str(e)}')
-        return web.json_response({
-            "status": "error",
-            "message": str(e),
-            "collection_name": collection_name
-        }, dumps=lambda obj: json.dumps(obj, ensure_ascii=False), status=400)
-
 async def search_query(request, params_kw, *params, **kw):
-    debug(f'{params_kw=}')
+    debug(f'Received search_query params: {params_kw=}')
     se = ServerEnv()
     engine = se.engine
     query = params_kw.get('query')
     userid = params_kw.get('userid')
     db_type = params_kw.get('db_type', '')
     knowledge_base_ids = params_kw.get('knowledge_base_ids')
-    limit = params_kw.get('limit')
+    limit = params_kw.get('limit', 5)
     offset = params_kw.get('offset', 0)
     use_rerank = params_kw.get('use_rerank', True)
     collection_name = "ragdb" if not db_type else f"ragdb_{db_type}"
@@ -522,13 +477,13 @@ async def search_query(request, params_kw, *params, **kw):
         result = await engine.handle_connection("search_query", {
             "query": query,
             "userid": userid,
-            "db_type": db_type,
             "knowledge_base_ids": knowledge_base_ids,
             "limit": limit,
             "offset": offset,
-            "use_rerank": use_rerank
+            "use_rerank": use_rerank,
+            "db_type": db_type
         })
-        debug(f'{result=}')
+        debug(f'Search result: {result=}')
         response = {
             "status": "success",
             "results": result.get("results", []),
@@ -538,6 +493,51 @@ async def search_query(request, params_kw, *params, **kw):
         return web.json_response(response, dumps=lambda obj: json.dumps(obj, ensure_ascii=False))
     except Exception as e:
         error(f'纯向量搜索失败: {str(e)}')
+        return web.json_response({
+            "status": "error",
+            "message": str(e),
+            "collection_name": collection_name
+        }, dumps=lambda obj: json.dumps(obj, ensure_ascii=False), status=400)
+
+async def fused_search_query(request, params_kw, *params, **kw):
+    debug(f'Received fused_search_query params: {params_kw=}')
+    se = ServerEnv()
+    engine = se.engine
+    query = params_kw.get('query')
+    userid = params_kw.get('userid')
+    db_type = params_kw.get('db_type', '')
+    knowledge_base_ids = params_kw.get('knowledge_base_ids')
+    limit = params_kw.get('limit', 5)
+    offset = params_kw.get('offset', 0)
+    use_rerank = params_kw.get('use_rerank', True)
+    collection_name = "ragdb" if not db_type else f"ragdb_{db_type}"
+    try:
+        if not all([query, userid, knowledge_base_ids]):
+            debug(f'query, userid 或 knowledge_base_ids 未提供')
+            return web.json_response({
+                "status": "error",
+                "message": "query, userid 或 knowledge_base_ids 未提供",
+                "collection_name": collection_name
+            }, dumps=lambda obj: json.dumps(obj, ensure_ascii=False), status=400)
+        result = await engine.handle_connection("fused_search", {
+            "query": query,
+            "userid": userid,
+            "knowledge_base_ids": knowledge_base_ids,
+            "limit": limit,
+            "offset": offset,
+            "use_rerank": use_rerank,
+            "db_type": db_type
+        })
+        debug(f'Fused search result: {result=}')
+        response = {
+            "status": "success",
+            "results": result.get("results", []),
+            "timing": result.get("timing", {}),
+            "collection_name": collection_name
+        }
+        return web.json_response(response, dumps=lambda obj: json.dumps(obj, ensure_ascii=False))
+    except Exception as e:
+        error(f'融合搜索失败: {str(e)}')
         return web.json_response({
             "status": "error",
             "message": str(e),
