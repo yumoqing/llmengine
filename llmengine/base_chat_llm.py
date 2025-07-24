@@ -73,7 +73,7 @@ class BaseChatLLM:
 			"model":self.model_id,
 			"response_time": t2 - t1,
 			"finish_time": t3 - t1,
-			"output_token": output_tokens,
+			"output_tokens": output_tokens,
 			"choices":[
 				{
 					"index":0,
@@ -161,7 +161,7 @@ class BaseChatLLM:
 			"model":self.model_id,
 			"response_time": t2 - t1,
 			"finish_time": t3 - t1,
-			"output_token": output_tokens,
+			"output_tokens": output_tokens,
 			"choices":[
 				{
 					"index":0,
