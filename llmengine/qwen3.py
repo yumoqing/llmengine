@@ -31,6 +31,11 @@ class Qwen3LLM(BaseChatLLM):
 
 	def _messages2inputs(self, messages):
 		debug(f'-----------{messages=}-----------')
+		conversations = [
+			{
+				'messages':messages
+			}
+		]
 		text = self.tokenizer.apply_chat_template(
 			messages=messages, 
 			tokenize=False,
