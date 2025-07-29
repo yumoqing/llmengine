@@ -1,0 +1,15 @@
+[Unit]
+Wants=systemd-networkd.service
+
+[Service]
+Type=forking
+WorkingDirectory=/share/run/neo4j
+ExecStart=/share/run/neo4j/start.sh
+ExecStop=/share/run/neo4j/stop.sh
+StandardOutput=append:/var/log/neo4j/neo4j.log
+StandardError=append:/var/log/neo4j/neo4j.log
+SyslogIdentifier=/share/run/neo4j
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target

@@ -1,5 +1,10 @@
 {
     "filesroot": "$[workdir]$/files",
+    "neo4j": {
+        "uri": "bolt://10.18.34.18:7687",
+        "user": "neo4j",
+        "password": "261229..wmh"
+    },
     "logger": {
         "name": "llmengine",
         "levelname": "info",
@@ -11,7 +16,7 @@
         ],
         "client_max_size": 10000,
         "host": "0.0.0.0",
-        "port": 8887,
+        "port": 8885,
         "coding": "utf-8",
         "indexes": [
             "index.html",
@@ -19,11 +24,35 @@
         ],
         "startswiths": [
             {
-                "leading": "/v1/bgererank",
-                "registerfunction": "bgererank"
+                "leading": "/idfile",
+                "registerfunction": "idfile"
             },
             {
-                "leading": "/v1/docs",
+                "leading": "/v1/connection",
+                "registerfunction": "connection"
+            },
+            {
+                "leading": "/v1/initialize",
+                "registerfunction": "initialize"
+            },
+            {
+                "leading": "/v1/inserttriples",
+                "registerfunction": "inserttriples"
+            },
+            {
+                "leading": "/v1/deletedocument",
+                "registerfunction": "deletedocument"
+            },
+            {
+                "leading": "/v1/deleteknowledgebase",
+                "registerfunction": "deleteknowledgebase"
+            },
+            {
+                "leading": "/v1/matchtriplets",
+                "registerfunction": "matchtriplets"
+            },
+            {
+                "leading": "/docs",
                 "registerfunction": "docs"
             }
         ],
