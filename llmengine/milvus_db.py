@@ -79,19 +79,20 @@ class MilvusDBConnection(BaseDBConnection):
                 return await self._insert_document(chunks, db_type)
             elif action == "delete_document":
                 userid = params.get("userid", "")
-                filename = params.get("filename", "")
+                file_path = params.get("file_path", "")
                 knowledge_base_id = params.get("knowledge_base_id", "")
+                document_id = params.get("document_id", "")
                 db_type = params.get("db_type", "")
-                if not userid or not filename or not knowledge_base_id:
-                    return {"status": "error", "message": "userid、filename 和 knowledge_base_id 不能为空",
+                if not userid or not file_path or not knowledge_base_id or not document_id:
+                    return {"status": "error", "message": "userid、file_path document_id和 knowledge_base_id 不能为空1",
                             "collection_name": collection_name, "document_id": "", "status_code": 400}
                 if "_" in userid or "_" in knowledge_base_id:
                     return {"status": "error", "message": "userid 和 knowledge_base_id 不能包含下划线",
                             "collection_name": collection_name, "document_id": "", "status_code": 400}
-                if len(userid) > 100 or len(filename) > 255 or len(knowledge_base_id) > 100:
+                if len(userid) > 100 or len(file_path) > 255 or len(knowledge_base_id) > 100:
                     return {"status": "error", "message": "userid、filename 或 knowledge_base_id 的长度超出限制",
                             "collection_name": collection_name, "document_id": "", "status_code": 400}
-                return await self._delete_document(userid, filename, knowledge_base_id, db_type)
+                return await self._delete_document(userid, file_path, knowledge_base_id, document_id, db_type)
             elif action == "delete_knowledge_base":
                 userid = params.get("userid", "")
                 knowledge_base_id = params.get("knowledge_base_id", "")
@@ -392,7 +393,7 @@ class MilvusDBConnection(BaseDBConnection):
                 "status_code": 400
             }
 
-    async def _delete_document(self, userid: str, filename: str, knowledge_base_id: str, db_type: str = "") -> Dict[
+    async def _delete_document(self, userid: str, file_path: str, knowledge_base_id: str, document_id:str, db_type: str = "") -> Dict[
         str, Any]:
         """删除用户指定文件数据，仅处理 Milvus 记录"""
         collection_name = "ragdb" if not db_type else f"ragdb_{db_type}"
@@ -402,7 +403,7 @@ class MilvusDBConnection(BaseDBConnection):
                 return {
                     "status": "success",
                     "collection_name": collection_name,
-                    "document_id": "",
+                    "document_id": document_id,
                     "message": f"集合 {collection_name} 不存在，无需删除",
                     "status_code": 200
                 }
@@ -416,72 +417,40 @@ class MilvusDBConnection(BaseDBConnection):
                 return {
                     "status": "error",
                     "collection_name": collection_name,
-                    "document_id": "",
+                    "document_id": document_id,
                     "message": f"加载集合失败: {str(e)}",
                     "status_code": 400
                 }
 
-            expr = f"userid == '{userid}' and filename == '{filename}' and knowledge_base_id == '{knowledge_base_id}'"
-            debug(f"查询表达式: {expr}")
-            try:
-                results = collection.query(
-                    expr=expr,
-                    output_fields=["document_id"],
-                    limit=1000
-                )
-                if not results:
-                    debug(
-                        f"没有找到 userid={userid}, filename={filename}, knowledge_base_id={knowledge_base_id} 的记录")
-                    return {
-                        "status": "success",
-                        "collection_name": collection_name,
-                        "document_id": "",
-                        "message": f"没有找到 userid={userid}, filename={filename}, knowledge_base_id={knowledge_base_id} 的记录，无需删除",
-                        "status_code": 200
-                    }
-                document_ids = list(set(result["document_id"] for result in results if "document_id" in result))
-                debug(f"找到 {len(document_ids)} 个 document_id: {document_ids}")
-            except Exception as e:
-                error(f"查询 document_id 失败: {str(e)}")
-                return {
-                    "status": "error",
-                    "collection_name": collection_name,
-                    "document_id": "",
-                    "message": f"查询失败: {str(e)}",
-                    "status_code": 400
-                }
-
             total_deleted = 0
-            for doc_id in document_ids:
-                try:
-                    delete_expr = f"document_id == '{doc_id}'"
-                    debug(f"删除表达式: {delete_expr}")
-                    delete_result = collection.delete(delete_expr)
-                    deleted_count = delete_result.delete_count
-                    total_deleted += deleted_count
-                    info(f"成功删除 document_id={doc_id} 的 {deleted_count} 条 Milvus 记录")
-                except Exception as e:
-                    error(f"删除 document_id={doc_id} 的 Milvus 记录失败: {str(e)}")
-                    continue
+            try:
+                delete_expr = f"document_id == '{document_id}'"
+                debug(f"删除表达式: {delete_expr}")
+                delete_result = collection.delete(delete_expr)
+                deleted_count = delete_result.delete_count
+                total_deleted += deleted_count
+                info(f"成功删除 document_id={document_id} 的 {deleted_count} 条 Milvus 记录")
+            except Exception as e:
+                error(f"删除 document_id={document_id} 的 Milvus 记录失败: {str(e)}")
 
             if total_deleted == 0:
                 debug(
-                    f"没有删除任何 Milvus 记录，userid={userid}, filename={filename}, knowledge_base_id={knowledge_base_id}")
+                    f"没有删除任何 Milvus 记录，userid={userid}, file_path={file_path}, knowledge_base_id={knowledge_base_id}, document_id={document_id}")
                 return {
                     "status": "success",
                     "collection_name": collection_name,
-                    "document_id": "",
-                    "message": f"没有删除任何记录，userid={userid}, filename={filename}, knowledge_base_id={knowledge_base_id}",
+                    "document_id": document_id,
+                    "message": f"没有删除任何记录，userid={userid}, file_path={file_path}, knowledge_base_id={knowledge_base_id}, document_id={document_id}",
                     "status_code": 200
                 }
 
             info(
-                f"总计删除 {total_deleted} 条 Milvus 记录，userid={userid}, filename={filename}, knowledge_base_id={knowledge_base_id}")
+                f"总计删除 {total_deleted} 条 Milvus 记录，userid={userid}, file_path={file_path}, knowledge_base_id={knowledge_base_id}, document_id={document_id}")
             return {
                 "status": "success",
                 "collection_name": collection_name,
                 "document_id": ",".join(document_ids),
-                "message": f"成功删除 {total_deleted} 条 Milvus 记录，userid={userid}, filename={filename}, knowledge_base_id={knowledge_base_id}",
+                "message": f"成功删除 {total_deleted} 条 Milvus 记录，userid={userid}, file_path={file_path}, knowledge_base_id={knowledge_base_id}, document_id={document_id}",
                 "status_code": 200
             }
 
@@ -490,7 +459,7 @@ class MilvusDBConnection(BaseDBConnection):
             return {
                 "status": "error",
                 "collection_name": collection_name,
-                "document_id": "",
+                "document_id": document_id,
                 "message": f"删除文档失败: {str(e)}",
                 "status_code": 400
             }

@@ -307,20 +307,22 @@ async def delete_document(request, params_kw, *params, **kw):
     se = ServerEnv()
     engine = se.engine
     userid = params_kw.get('userid', '')
-    filename = params_kw.get('filename', '')
+    file_path = params_kw.get('file_path', '')
     knowledge_base_id = params_kw.get('knowledge_base_id', '')
+    document_id = params_kw.get('document_id', '')
     db_type = params_kw.get('db_type', '')
     collection_name = "ragdb" if not db_type else f"ragdb_{db_type}"
     try:
-        required_fields = ['userid', 'filename', 'knowledge_base_id']
+        required_fields = ['userid', 'file_path', 'knowledge_base_id', 'document_id']
         missing_fields = [field for field in required_fields if field not in params_kw or not params_kw[field]]
         if missing_fields:
             raise ValueError(f"缺少必填字段: {', '.join(missing_fields)}")
 
         result = await engine.handle_connection("delete_document", {
             "userid": userid,
-            "filename": filename,
+            "file_path": file_path,
             "knowledge_base_id": knowledge_base_id,
+            "document_id": document_id,
             "db_type": db_type
         })
         debug(f'Delete result: {result=}')
@@ -331,7 +333,7 @@ async def delete_document(request, params_kw, *params, **kw):
         return web.json_response({
             "status": "error",
             "collection_name": collection_name,
-            "document_id": "",
+            "document_id": document_id,
             "message": str(e),
             "status_code": 400
         }, dumps=lambda obj: json.dumps(obj, ensure_ascii=False), status=400)
