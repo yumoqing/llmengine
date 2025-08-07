@@ -1,6 +1,0 @@
-CQA	c93f4c3c-dcff-43b6-bdb1-6a9db23ff582
-LC-QuAD	c93f4c3c-dcff-43b6-bdb1-6a9db23ff582
-interpretables	c93f4c3c-dcff-43b6-bdb1-6a9db23ff582
-knowledge based question mark	c93f4c3c-dcff-43b6-bdb1-6a9db23ff582
-participant	c93f4c3c-dcff-43b6-bdb1-6a9db23ff582
-逻辑形式	c93f4c3c-dcff-43b6-bdb1-6a9db23ff582

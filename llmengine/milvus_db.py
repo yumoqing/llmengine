@@ -86,9 +86,6 @@ class MilvusDBConnection(BaseDBConnection):
                 if not userid or not file_path or not knowledge_base_id or not document_id:
                     return {"status": "error", "message": "userid、file_path document_id和 knowledge_base_id 不能为空1",
                             "collection_name": collection_name, "document_id": "", "status_code": 400}
-                if "_" in userid or "_" in knowledge_base_id:
-                    return {"status": "error", "message": "userid 和 knowledge_base_id 不能包含下划线",
-                            "collection_name": collection_name, "document_id": "", "status_code": 400}
                 if len(userid) > 100 or len(file_path) > 255 or len(knowledge_base_id) > 100:
                     return {"status": "error", "message": "userid、filename 或 knowledge_base_id 的长度超出限制",
                             "collection_name": collection_name, "document_id": "", "status_code": 400}
@@ -98,9 +95,6 @@ class MilvusDBConnection(BaseDBConnection):
                 knowledge_base_id = params.get("knowledge_base_id", "")
                 if not userid or not knowledge_base_id:
                     return {"status": "error", "message": "userid 和 knowledge_base_id 不能为空",
-                            "collection_name": collection_name, "document_id": "", "status_code": 400}
-                if "_" in userid or "_" in knowledge_base_id:
-                    return {"status": "error", "message": "userid 和 knowledge_base_id 不能包含下划线",
                             "collection_name": collection_name, "document_id": "", "status_code": 400}
                 if len(userid) > 100 or len(knowledge_base_id) > 100:
                     return {"status": "error", "message": "userid 或 knowledge_base_id 的长度超出限制",
@@ -449,7 +443,7 @@ class MilvusDBConnection(BaseDBConnection):
             return {
                 "status": "success",
                 "collection_name": collection_name,
-                "document_id": ",".join(document_ids),
+                "document_id": ",".join(document_id),
                 "message": f"成功删除 {total_deleted} 条 Milvus 记录，userid={userid}, file_path={file_path}, knowledge_base_id={knowledge_base_id}, document_id={document_id}",
                 "status_code": 200
             }
