@@ -15,9 +15,11 @@ def llm_register(model_key, Klass):
 	model_pathMap[model_key] = Klass
 
 def get_llm_class(model_path):
-	for k,klass in model_pathMap.items():
+	keys = [k for k in model_pathMap.keys()].sort()
+	keys.reverse()
+	for k in keys:
 		if len(model_path.split(k)) > 1:
-			return klass
+			return model_pathMap[k]
 	print(f'{model_pathMap=}')
 	return None
 
