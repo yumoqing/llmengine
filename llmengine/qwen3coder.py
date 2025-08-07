@@ -39,4 +39,4 @@ class Qwen3CoderLLM(BaseChatLLM):
 		debug(f'{text=}, {type(text)=}')
 		return self.tokenizer([text], return_tensors="pt").to(self.model.device)
 
-llm_register("Qwen/Qwen3Coder", Qwen3LLM)
+llm_register("Qwen/Qwen3Coder", Qwen3CoderLLM)
