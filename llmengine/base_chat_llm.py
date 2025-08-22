@@ -145,6 +145,7 @@ class BaseChatLLM:
 						kwargs=kwargs)
 		thread.start()
 		txt = ''
+		i_tokens = o_tokens = 0
 		i = 0
 		for d in self.output_generator(streamer):
 			if i == 0:
@@ -153,8 +154,8 @@ class BaseChatLLM:
 			if d['choices'][0]['finish_reason'] != 'stop':
 				txt += d['choices'][0]['delta']['content']
 			else:
-				i_tokens = d['input_tokens']
-				o_tokens = d['output_tokens']
+				o_tokens = d.get('output_tokens', 0)
+		i_tokens  = input_len
 
 		t2 = time()
 		return {
@@ -164,7 +165,6 @@ class BaseChatLLM:
 			"model":self.model_id,
 			"response_time": t2 - t1,
 			"finish_time": t3 - t1,
-			"output_tokens": output_tokens,
 			"choices":[
 				{
 					"index":0,
