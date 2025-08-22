@@ -23,6 +23,7 @@ class Qwen3CoderLLM(BaseChatLLM):
 		generate_kwargs = dict(
 			**inputs,
 			streamer=streamer,
+			num_return_sequences=2, # 并行生成 4 个结果
 			# do_sample=True,
 			# eos_token_id=self.tokenizer.eos_token_id
 			max_new_tokens=65536

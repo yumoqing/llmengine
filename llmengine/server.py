@@ -8,6 +8,7 @@ from llmengine.gemma3_it import Gemma3LLM
 from llmengine.medgemma3_it import MedgemmaLLM
 from llmengine.qwen3 import Qwen3LLM
 from llmengine.qwen3coder import Qwen3CoderLLM
+from llmengine.baiduanm2 import BaichuanM2LLM
 
 from appPublic.registerfunction import RegisterFunction
 from appPublic.log import debug, exception
