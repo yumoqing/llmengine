@@ -112,9 +112,6 @@ class MilvusConnection:
                 if not file_path or not userid or not knowledge_base_id or not document_id:
                     return {"status": "error", "message": "file_path、userid document_id和 knowledge_base_id 不能为空",
                             "collection_name": collection_name, "document_id": "", "status_code": 400}
-                if "_" in userid or "_" in knowledge_base_id:
-                    return {"status": "error", "message": "userid 和 knowledge_base_id 不能包含下划线",
-                            "collection_name": collection_name, "document_id": document_id, "status_code": 400}
                 if len(knowledge_base_id) > 100:
                     return {"status": "error", "message": "knowledge_base_id 的长度应小于 100",
                             "collection_name": collection_name, "document_id": "", "status_code": 400}
@@ -127,9 +124,6 @@ class MilvusConnection:
                 if not userid or not file_path or not knowledge_base_id or not document_id:
                     return {"status": "error", "message": "userid、file_path document_id和 knowledge_base_id 不能为空",
                             "collection_name": collection_name, "document_id": "", "status_code": 400}
-                if "_" in userid or "_" in knowledge_base_id:
-                    return {"status": "error", "message": "userid 和 knowledge_base_id 不能包含下划线",
-                            "collection_name": collection_name, "document_id": "", "status_code": 400}
                 if len(userid) > 100 or len(file_path) > 255 or len(knowledge_base_id) > 100:
                     return {"status": "error", "message": "userid、file_path 或 knowledge_base_id 的长度超出限制",
                             "collection_name": collection_name, "document_id": "", "status_code": 400}
@@ -139,9 +133,6 @@ class MilvusConnection:
                 knowledge_base_id = params.get("knowledge_base_id", "")
                 if not userid or not knowledge_base_id:
                     return {"status": "error", "message": "userid 和 knowledge_base_id 不能为空",
-                            "collection_name": collection_name, "document_id": "", "status_code": 400}
-                if "_" in userid or "_" in knowledge_base_id:
-                    return {"status": "error", "message": "userid 和 knowledge_base_id 不能包含下划线",
                             "collection_name": collection_name, "document_id": "", "status_code": 400}
                 if len(userid) > 100 or len(knowledge_base_id) > 100:
                     return {"status": "error", "message": "userid 或 knowledge_base_id 的长度超出限制",
@@ -249,8 +240,6 @@ class MilvusConnection:
             # 验证参数
             if not userid or not knowledge_base_id:
                 raise ValueError("userid 和 knowledge_base_id 不能为空")
-            if "_" in userid or "_" in knowledge_base_id:
-                raise ValueError("userid 和 knowledge_base_id 不能包含下划线")
             if len(userid) > 100 or len(knowledge_base_id) > 100:
                 raise ValueError("userid 或 knowledge_base_id 的长度超出限制")
             if not os.path.exists(file_path):
@@ -736,8 +725,6 @@ class MilvusConnection:
                 raise ValueError("查询文本不能为空")
             if not userid:
                 raise ValueError("userid 不能为空")
-            if "_" in userid or (db_type and "_" in db_type):
-                raise ValueError("userid 和 db_type 不能包含下划线")
             if (db_type and len(db_type) > 100) or len(userid) > 100:
                 raise ValueError("userid 或 db_type 的长度超出限制")
             if limit <= 0 or limit > 16384:
@@ -753,8 +740,6 @@ class MilvusConnection:
                     raise ValueError(f"knowledge_base_id 必须是字符串: {kb_id}")
                 if len(kb_id) > 100:
                     raise ValueError(f"knowledge_base_id 长度超出 100 个字符: {kb_id}")
-                if "_" in kb_id:
-                    raise ValueError(f"knowledge_base_id 不能包含下划线: {kb_id}")
 
             # 将查询文本转换为向量
             vector_start = time.time()
@@ -814,8 +799,6 @@ class MilvusConnection:
 
             if not query or not userid or not knowledge_base_ids:
                 raise ValueError("query、userid 和 knowledge_base_ids 不能为空")
-            if "_" in userid or (db_type and "_" in db_type):
-                raise ValueError("userid 和 db_type 不能包含下划线")
             if (db_type and len(db_type) > 100) or len(userid) > 100:
                 raise ValueError("db_type 或 userid 的长度超出限制")
             if limit < 1 or limit > 16384 or offset < 0:
@@ -925,8 +908,6 @@ class MilvusConnection:
 
             if not userid:
                 raise ValueError("userid 不能为空")
-            if "_" in userid or (db_type and "_" in db_type):
-                raise ValueError("userid 和 db_type 不能包含下划线")
             if (db_type and len(db_type) > 100) or len(userid) > 100:
                 raise ValueError("userid 或 db_type 的长度超出限制")
 

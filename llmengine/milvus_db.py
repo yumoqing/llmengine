@@ -8,6 +8,7 @@ import uuid
 from datetime import datetime
 from llmengine.base_db import connection_register, BaseDBConnection
 import time
+import traceback
 
 class MilvusDBConnection(BaseDBConnection):
     _instance = None
@@ -26,6 +27,7 @@ class MilvusDBConnection(BaseDBConnection):
         try:
             config = getConfig()
             self.db_path = config['milvus_db']
+            debug(f"dbpath: {self.db_path}")
         except KeyError as e:
             error(f"配置文件缺少必要字段: {str(e)}")
             raise RuntimeError(f"配置文件缺少必要字段: {str(e)}")
@@ -37,11 +39,13 @@ class MilvusDBConnection(BaseDBConnection):
         """初始化 Milvus 连接，确保单一连接"""
         try:
             db_dir = os.path.dirname(self.db_path)
+            debug(f"db_dir: {db_dir}")
             if not os.path.exists(db_dir):
                 os.makedirs(db_dir, exist_ok=True)
                 debug(f"创建 Milvus 目录: {db_dir}")
             if not os.access(db_dir, os.W_OK):
                 raise RuntimeError(f"Milvus 目录 {db_dir} 不可写")
+                debug(f"不可写")
             if not connections.has_connection("default"):
                 connections.connect("default", uri=self.db_path)
                 debug(f"已连接到 Milvus Lite，路径: {self.db_path}")
@@ -314,19 +318,19 @@ class MilvusDBConnection(BaseDBConnection):
             # 检查是否已存在相同的 userid、knowledge_base_id 和 filename
             collection = Collection(collection_name)
             collection.load()
-            expr = f"userid == '{chunks[0]['userid']}' and knowledge_base_id == '{chunks[0]['knowledge_base_id']}' and filename == '{chunks[0]['filename']}'"
-            debug(f"检查重复文档: {expr}")
-            results = collection.query(expr=expr, output_fields=["document_id"], limit=1)
-            if results:
-                debug(
-                    f"找到重复文档: userid={chunks[0]['userid']}, knowledge_base_id={chunks[0]['knowledge_base_id']}, filename={chunks[0]['filename']}")
-                return {
-                    "status": "error",
-                    "document_id": document_id,
-                    "collection_name": collection_name,
-                    "message": f"文档已存在: userid={chunks[0]['userid']}, knowledge_base_id={chunks[0]['knowledge_base_id']}, filename={chunks[0]['filename']}",
-                    "status_code": 400
-                }
+            # expr = f"userid == '{chunks[0]['userid']}' and knowledge_base_id == '{chunks[0]['knowledge_base_id']}' and filename == '{chunks[0]['filename']}'"
+            # debug(f"检查重复文档: {expr}")
+            # results = collection.query(expr=expr, output_fields=["document_id"], limit=1)
+            # if results:
+            #     debug(
+            #         f"找到重复文档: userid={chunks[0]['userid']}, knowledge_base_id={chunks[0]['knowledge_base_id']}, filename={chunks[0]['filename']}")
+            #     return {
+            #         "status": "error",
+            #         "document_id": document_id,
+            #         "collection_name": collection_name,
+            #         "message": f"文档已存在: userid={chunks[0]['userid']}, knowledge_base_id={chunks[0]['knowledge_base_id']}, filename={chunks[0]['filename']}",
+            #         "status_code": 400
+            #     }
 
             # 提取数据
             userids = [chunk["userid"] for chunk in chunks]
@@ -368,15 +372,15 @@ class MilvusDBConnection(BaseDBConnection):
                 "message": f"成功插入 {len(texts)} 个文档到 {collection_name}",
                 "status_code": 200
             }
-        except MilvusException as e:
-            error(f"Milvus 插入失败: {str(e)}, 堆栈: {traceback.format_exc()}")
-            return {
-                "status": "error",
-                "document_id": document_id,
-                "collection_name": collection_name,
-                "message": f"Milvus 插入失败: {str(e)}",
-                "status_code": 400
-            }
+        # except MilvusException as e:
+        #     error(f"Milvus 插入失败: {str(e)}, 堆栈: {traceback.format_exc()}")
+        #     return {
+        #         "status": "error",
+        #         "document_id": document_id,
+        #         "collection_name": collection_name,
+        #         "message": f"Milvus 插入失败: {str(e)}",
+        #         "status_code": 400
+        #     }
         except Exception as e:
             error(f"插入文档失败: {str(e)}, 堆栈: {traceback.format_exc()}")
             return {
@@ -443,7 +447,7 @@ class MilvusDBConnection(BaseDBConnection):
             return {
                 "status": "success",
                 "collection_name": collection_name,
-                "document_id": ",".join(document_id),
+                "document_id":document_id,
                 "message": f"成功删除 {total_deleted} 条 Milvus 记录，userid={userid}, file_path={file_path}, knowledge_base_id={knowledge_base_id}, document_id={document_id}",
                 "status_code": 200
             }
@@ -569,8 +573,6 @@ class MilvusDBConnection(BaseDBConnection):
                 raise ValueError("userid 不能为空")
             if not knowledge_base_ids:
                 raise ValueError("knowledge_base_ids 不能为空")
-            if "_" in userid:
-                raise ValueError("userid 不能包含下划线")
             if len(userid) > 100:
                 raise ValueError("userid 的长度超出限制")
             if limit <= 0 or limit > 16384:
@@ -584,8 +586,6 @@ class MilvusDBConnection(BaseDBConnection):
                     raise ValueError(f"knowledge_base_id 必须是字符串: {kb_id}")
                 if len(kb_id) > 100:
                     raise ValueError(f"knowledge_base_id 长度超出 100 个字符: {kb_id}")
-                if "_" in kb_id:
-                    raise ValueError(f"knowledge_base_id 不能包含下划线: {kb_id}")
 
             if not utility.has_collection(collection_name):
                 debug(f"集合 {collection_name} 不存在")
@@ -672,8 +672,6 @@ class MilvusDBConnection(BaseDBConnection):
 
             if not userid:
                 raise ValueError("userid 不能为空")
-            if "_" in userid or (db_type and "_" in db_type):
-                raise ValueError("userid 和 db_type 不能包含下划线")
             if (db_type and len(db_type) > 100) or len(userid) > 100:
                 raise ValueError("userid 或 db_type 的长度超出限制")
 

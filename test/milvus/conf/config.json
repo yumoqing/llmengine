@@ -1,6 +1,6 @@
 {
     "filesroot": "$[workdir]$/files",
-    "milvus_db": "$[workdir]$/milvus.db",
+    "milvus_db": "/share/wangmeihua/llmengine/test/milvus/milvus.db",
     "logger": {
         "name": "llmengine",
         "levelname": "info",
