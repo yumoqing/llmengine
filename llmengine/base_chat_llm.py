@@ -150,14 +150,14 @@ class BaseChatLLM:
 		for d in self.output_generator(streamer):
 			if i == 0:
 				i = 1
-				t1 = time()
+				t2 = time()
 			if d['choices'][0]['finish_reason'] != 'stop':
 				txt += d['choices'][0]['delta']['content']
 			else:
 				o_tokens = d.get('output_tokens', 0)
 		i_tokens  = input_len
 
-		t2 = time()
+		t3 = time()
 		return {
 			'id': f'chatcmpl-{getID()}',
 			"object":"chat.completion",

@@ -10,22 +10,22 @@ from llmengine.base_chat_llm import BaseChatLLM, llm_register
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 class BaichuanM2LLM(BaseChatLLM):
-    def __init__(self, model_id):
-        self.tokenizer = AutoTokenizer.from_pretrained(model_id)
-        self.model = AutoModelForCausalLM.from_pretrained(
-            model_id,
-            torch_dtype="auto",
-            device_map="auto"
-        )
-        self.model_id = model_id
+	def __init__(self, model_id):
+		self.tokenizer = AutoTokenizer.from_pretrained(model_id)
+		self.model = AutoModelForCausalLM.from_pretrained(
+			model_id,
+			torch_dtype="auto",
+			device_map="auto"
+		)
+		self.model_id = model_id
 
-    def build_kwargs(self, inputs, streamer):
-        generate_kwargs = dict(
-            **inputs,
-            streamer=streamer,
-            max_new_tokens=4096
-        )
-        return generate_kwargs
+	def build_kwargs(self, inputs, streamer):
+		generate_kwargs = dict(
+			**inputs,
+			streamer=streamer,
+			max_new_tokens=4096
+		)
+		return generate_kwargs
 
 	def _messages2inputs(self, messages):
 		text = tokenizer.apply_chat_template(
