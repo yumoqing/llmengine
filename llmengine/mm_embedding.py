@@ -9,7 +9,19 @@ Features:
 - Video frame sampling + average pooling
 - Audio resampling + CLAP embedding
 - L2 normalized output for similarity search
+
+model_name='/data/ymq/models/laion/CLIP-ViT-B-32-laion2B-s34B-b79K'
+
+impput:
+
+text:
+{
+	"type":"text,
+	"text":"...."
+}
+image:
 """
+
 
 import os
 from pathlib import Path
@@ -34,6 +46,13 @@ except Exception:
 # ------------------- Configuration -------------------
 DEVICE = "cuda" if torch.cuda.is_available() else "mps" if getattr(torch.backends, "mps", None) and torch.backends.mps.is_available() else "cpu"
 USE_FP16 = DEVICE == "cuda"
+
+def choose_device():
+    if torch.cuda.is_available():
+        return "cuda"
+    if getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
+        return "mps"
+    return "cpu"
 
 # Unified model for all modalities
 CLIP_MODEL_NAME = "openai/clip-vit-large-patch14"
