@@ -91,6 +91,11 @@ class MM_Embedding:
 		if USE_FP16:
 			self.model.half()
 
+	def detect_faces(self, img):
+		faces = self.extract_faces(img)
+		face_vecs = self.embed_faces(img)
+		return face_vecs, faces
+		
 	# ------------------- Image -------------------
 	def embed_images(self, paths, batch_size=16):
 		results = {}
@@ -106,16 +111,14 @@ class MM_Embedding:
 			feats = feats.cpu().numpy()
 			faces_list = []
 			for img in imgs:
-				faces = self.extract_faces(img)
-				face_vecs = self.embed_faces(img)
-				faces_list.append([faces, face_vecs])
+				faces_list.append(self.detect_faces(img))
 
 			for p, v, fs in zip(batch, feats, faces_list):
 				results[p] = {
 					'type':'image',
 					'path': p,
-					'faces': fs[0],
-					'face_vecs': fs[1],
+					'faces': fs[1],
+					'face_vecs': fs[0],
 					'face_count':len(fs[0]),
 					'vector': l2_normalize(v)
 				}
@@ -134,7 +137,10 @@ class MM_Embedding:
 					feats = self.model.get_text_features(**inputs)
 			feats = feats.cpu().numpy()
 			for t, v in zip(batch, feats):
-				results[t] = l2_normalize(v)
+				results[t] = {
+					"type": "text",
+					"vector": l2_normalize(v)
+				}
 		return results
 
 	# ------------------- Video -------------------
@@ -158,6 +164,7 @@ class MM_Embedding:
 				continue
 			# batch embed
 			emb_list = []
+			faces_list = []
 			for batch in chunked(frames, 16):
 				inputs = self.processor(images=batch, return_tensors="pt", padding=True).to(DEVICE)
 				with torch.no_grad():
@@ -166,11 +173,20 @@ class MM_Embedding:
 							feats = self.model.get_image_features(**inputs)
 					else:
 						feats = self.model.get_image_features(**inputs)
+				for img in batch:
+					faces_list += self.detect_faces(img)[0]
 				emb_list.append(feats.cpu().numpy())
+			face_vecs = deduplicate_faces(faces_list)
 			emb_array = np.vstack(emb_list)
 			video_vec = l2_normalize(emb_array.mean(axis=0))
-			face_vecs = 
-			results[p] = video_vec
+			# face_vecs = 
+			results[p] = {
+				"type": "video",
+				"path": p,
+				"vector": video_vec,
+				"face_count": len(face_vecs),
+				"face_vecs": face_vecs
+			}
 		return results
 
 	# ------------------- Audio -------------------
