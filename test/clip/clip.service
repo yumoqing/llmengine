@@ -1,0 +1,14 @@
+[Unit]
+Wants=systemd-networkd.service
+
+[Service]
+WorkingDirectory=/share/run/clip
+ExecStart=/share/run/clip/start.sh
+ExecStop=/share/run/clip/stop.sh
+StandardOutput=append:/var/log/clip/clip.log
+StandardError=append:/var/log/clip/clip.log
+SyslogIdentifier=clip
+
+[Install]
+WantedBy=multi-user.target
+

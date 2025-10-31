@@ -1,0 +1,14 @@
+[Unit]
+Wants=systemd-networkd.service
+
+[Service]
+WorkingDirectory=/share/run/m2m
+ExecStart=/share/run/m2m/start.sh
+ExecStop=/share/run/m2m/stop.sh
+StandardOutput=append:/var/log/m2m/m2m.log
+StandardError=append:/var/log/m2m/m2m.log
+SyslogIdentifier=m2m
+
+[Install]
+WantedBy=multi-user.target
+
