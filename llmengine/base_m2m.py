@@ -22,5 +22,5 @@ class BaseM2M:
     def __init__(self, model_id, **kw):
         self.model_id = model_id
 
-    def m2m(self, texts: str, src_lang: str, tgt_lang: str) -> str:
+    def translate(self, texts: str, src_lang: str, tgt_lang: str) -> str:
         raise NotImplementedError

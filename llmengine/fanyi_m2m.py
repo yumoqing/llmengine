@@ -15,7 +15,7 @@ class M2M100Translator(BaseM2M):
         self.model.eval()
         self.model_name = model_id.split('/')[-1]
 
-    def m2m(self, text: str, src_lang: str, tgt_lang: str) -> str:
+    def translate(self, text: str, src_lang: str, tgt_lang: str) -> str:
         """翻译一段话"""
         self.tokenizer.src_lang = src_lang
         encoded = self.tokenizer(

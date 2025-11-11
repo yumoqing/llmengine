@@ -13,7 +13,7 @@ from .base_m2m import get_llm_class
 
 
 helptext = """M2M100 翻译 API:
-POST /v1/m2m
+POST /v1/translate
 Headers:
     Content-Type: application/json
 
@@ -39,7 +39,7 @@ Response:
 
 def init():
     rf = RegisterFunction()
-    rf.register('m2m', m2m)
+    rf.register('translate', translate)
     rf.register('docs', docs)
 
 
@@ -47,7 +47,7 @@ async def docs(request, params_kw, *params, **kw):
     return helptext
 
 
-async def m2m(request, params_kw, *params, **kw):
+async def translate(request, params_kw, *params, **kw):
     debug(f'{params_kw=}')
     se = ServerEnv()
     engine = se.engine
@@ -60,7 +60,7 @@ async def m2m(request, params_kw, *params, **kw):
     if not text or not isinstance(text, str):
         raise Exception("`text` must be a non-empty string")
 
-    f = awaitify(engine.m2m)
+    f = awaitify(engine.translate)
     translation = await f(text, src_lang, tgt_lang)
 
     ret = {
@@ -87,6 +87,19 @@ def main():
 
     se = ServerEnv()
     se.engine = Klass(args.model_path)
+
+    if torch.cuda.is_available():
+        logical_id = torch.cuda.current_device()
+        physical_id = int(os.environ.get("CUDA_VISIBLE_DEVICES", "0").split(",")[0])
+        gpu_name = torch.cuda.get_device_name(logical_id)
+        mem_used = torch.cuda.memory_allocated(logical_id) / 1024 ** 3
+        mem_total = torch.cuda.get_device_properties(logical_id).total_memory / 1024 ** 3
+
+        debug(f"\n我正在使用 物理 GPU {physical_id} → 逻辑 GPU {logical_id}")
+        debug(f"显卡型号: {gpu_name}")
+        debug(f"显存占用: {mem_used:.1f} GB / {mem_total:.1f} GB\n")
+    else:
+        debug("\n我在 CPU 上跑\n")
 
     debug(f"Starting M2M100 service on port {args.port}")
     webserver(init, args.workdir, args.port)

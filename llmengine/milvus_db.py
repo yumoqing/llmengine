@@ -9,6 +9,7 @@ from datetime import datetime
 from llmengine.base_db import connection_register, BaseDBConnection
 import time
 import traceback
+import hashlib
 
 class MilvusDBConnection(BaseDBConnection):
     _instance = None
@@ -62,6 +63,7 @@ class MilvusDBConnection(BaseDBConnection):
             if not params:
                 params = {}
             db_type = params.get("db_type", "")
+            fields = params.get("fields", None)  # 获取 fields 参数
             collection_name = "ragdb" if not db_type else f"ragdb_{db_type}"
             if db_type and "_" in db_type:
                 return {"status": "error", "message": "db_type 不能包含下划线", "collection_name": collection_name,
@@ -72,10 +74,8 @@ class MilvusDBConnection(BaseDBConnection):
 
             if action == "initialize":
                 return {"status": "success", "message": f"Milvus 连接已初始化，路径: {self.db_path}"}
-            elif action == "get_params":
-                return {"status": "success", "params": {"uri": self.db_path}}
             elif action == "create_collection":
-                return await self._create_collection(db_type)
+                return await self._create_collection(db_type, fields)
             elif action == "delete_collection":
                 return await self._delete_collection(db_type)
             elif action == "insert_document":
@@ -86,14 +86,13 @@ class MilvusDBConnection(BaseDBConnection):
                 file_path = params.get("file_path", "")
                 knowledge_base_id = params.get("knowledge_base_id", "")
                 document_id = params.get("document_id", "")
-                db_type = params.get("db_type", "")
-                if not userid or not file_path or not knowledge_base_id or not document_id:
-                    return {"status": "error", "message": "userid、file_path document_id和 knowledge_base_id 不能为空1",
+                if not userid or not knowledge_base_id or not document_id:
+                    return {"status": "error", "message": "userid、document_id 和 knowledge_base_id 不能为空",
                             "collection_name": collection_name, "document_id": "", "status_code": 400}
                 if len(userid) > 100 or len(file_path) > 255 or len(knowledge_base_id) > 100:
                     return {"status": "error", "message": "userid、filename 或 knowledge_base_id 的长度超出限制",
                             "collection_name": collection_name, "document_id": "", "status_code": 400}
-                return await self._delete_document(userid, file_path, knowledge_base_id, document_id, db_type)
+                return await self._delete_document(userid, knowledge_base_id, document_id, file_path, db_type)
             elif action == "delete_knowledge_base":
                 userid = params.get("userid", "")
                 knowledge_base_id = params.get("knowledge_base_id", "")
@@ -110,9 +109,8 @@ class MilvusDBConnection(BaseDBConnection):
                 knowledge_base_ids = params.get("knowledge_base_ids", [])
                 limit = params.get("limit", 5)
                 offset = params.get("offset", 0)
-                db_type = params.get("db_type", "")
-                if not query_vector or not userid or not knowledge_base_ids:
-                    return {"status": "error", "message": "query_vector、userid 或 knowledge_base_ids 不能为空",
+                if not query_vector or not userid:
+                    return {"status": "error", "message": "query_vector或userid不能为空",
                             "collection_name": collection_name, "document_id": "", "status_code": 400}
                 if limit < 1 or limit > 16384:
                     return {"status": "error", "message": "limit 必须在 1 到 16384 之间",
@@ -139,9 +137,10 @@ class MilvusDBConnection(BaseDBConnection):
                 "status_code": 400
             }
 
-    async def _create_collection(self, db_type: str = "") -> Dict:
-        """创建 Milvus 集合"""
+    async def _create_collection(self, db_type: str = "", fields: List[Any] = None) -> Dict:
+        """创建 Milvus 集合，支持动态 fields（JSON 或 FieldSchema）"""
         try:
+            # 确定集合名称
             collection_name = "ragdb" if not db_type else f"ragdb_{db_type}"
             if len(collection_name) > 255:
                 raise ValueError(f"集合名称 {collection_name} 超过 255 个字符")
@@ -149,90 +148,151 @@ class MilvusDBConnection(BaseDBConnection):
                 raise ValueError("db_type 不能包含下划线")
             if db_type and len(db_type) > 100:
                 raise ValueError("db_type 的长度应小于 100")
-            debug(f"集合名称: {collection_name}")
+            debug(f"初始集合名称: {collection_name}")
 
-            fields = [
-                FieldSchema(name="pk", dtype=DataType.VARCHAR, is_primary=True, max_length=36, auto_id=True),
-                FieldSchema(name="userid", dtype=DataType.VARCHAR, max_length=100),
-                FieldSchema(name="knowledge_base_id", dtype=DataType.VARCHAR, max_length=100),
-                FieldSchema(name="document_id", dtype=DataType.VARCHAR, max_length=36),
-                FieldSchema(name="text", dtype=DataType.VARCHAR, max_length=65535),
-                FieldSchema(name="vector", dtype=DataType.FLOAT_VECTOR, dim=1024),
-                FieldSchema(name="filename", dtype=DataType.VARCHAR, max_length=255),
-                FieldSchema(name="file_path", dtype=DataType.VARCHAR, max_length=1024),
-                FieldSchema(name="upload_time", dtype=DataType.VARCHAR, max_length=64),
-                FieldSchema(name="file_type", dtype=DataType.VARCHAR, max_length=64),
-            ]
-            schema = CollectionSchema(
-                fields=fields,
-                description="统一数据集合，包含用户ID、知识库ID、document_id 和元数据字段",
-                auto_id=True,
-                primary_field="pk",
-            )
-
+            # 检查集合是否已存在
             if utility.has_collection(collection_name):
-                try:
-                    collection = Collection(collection_name)
-                    existing_schema = collection.schema
-                    expected_fields = {f.name for f in fields}
-                    actual_fields = {f.name for f in existing_schema.fields}
-                    vector_field = next((f for f in existing_schema.fields if f.name == "vector"), None)
-
-                    schema_compatible = False
-                    if expected_fields == actual_fields and vector_field is not None and vector_field.dtype == DataType.FLOAT_VECTOR:
-                        dim = vector_field.params.get('dim', None) if hasattr(vector_field, 'params') and vector_field.params else None
-                        schema_compatible = dim == 1024
-                        debug(f"检查集合 {collection_name} 的 schema: 字段匹配={expected_fields == actual_fields}, "
-                              f"vector_field存在={vector_field is not None}, dtype={vector_field.dtype if vector_field else '无'}, "
-                              f"dim={dim if dim is not None else '未定义'}")
-                    if not schema_compatible:
-                        debug(f"集合 {collection_name} 的 schema 不兼容，原因: "
-                              f"字段不匹配: {expected_fields.symmetric_difference(actual_fields) or '无'}, "
-                              f"vector_field: {vector_field is not None}, "
-                              f"dtype: {vector_field.dtype if vector_field else '无'}, "
-                              f"dim: {vector_field.params.get('dim', '未定义') if vector_field and hasattr(vector_field, 'params') and vector_field.params else '未定义'}")
-                        utility.drop_collection(collection_name)
-                    else:
-                        collection.load()
-                        debug(f"集合 {collection_name} 已存在并加载成功")
-                        return {
-                            "status": "success",
-                            "collection_name": collection_name,
-                            "message": f"集合 {collection_name} 已存在"
-                        }
-                except Exception as e:
-                    error(f"加载集合 {collection_name} 失败: {str(e)}")
-                    return {
-                        "status": "error",
-                        "collection_name": collection_name,
-                        "message": str(e)
-                    }
-
-            try:
-                collection = Collection(collection_name, schema)
-                collection.create_index(
-                    field_name="vector",
-                    index_params={"index_type": "AUTOINDEX", "metric_type": "COSINE"}
-                )
-                for field in ["userid", "knowledge_base_id", "document_id", "filename", "file_path", "upload_time", "file_type"]:
-                    collection.create_index(
-                        field_name=field,
-                        index_params={"index_type": "INVERTED"}
-                    )
+                collection = Collection(collection_name)
                 collection.load()
-                debug(f"成功创建并加载集合: {collection_name}")
+                debug(f"集合 {collection_name} 已存在，直接加载")
                 return {
                     "status": "success",
                     "collection_name": collection_name,
-                    "message": f"集合 {collection_name} 创建成功"
+                    "message": f"集合 {collection_name} 已存在，直接使用现有 schema"
                 }
-            except Exception as e:
-                error(f"创建集合 {collection_name} 失败: {str(e)}")
-                return {
-                    "status": "error",
-                    "collection_name": collection_name,
-                    "message": str(e)
-                }
+
+            # 如果集合不存在，处理 fields
+            if db_type == "":
+                # db_type 为空，使用默认 fields
+                fields = [
+                    FieldSchema(name="pk", dtype=DataType.VARCHAR, is_primary=True, max_length=36, auto_id=True),
+                    FieldSchema(name="userid", dtype=DataType.VARCHAR, max_length=100),
+                    FieldSchema(name="knowledge_base_id", dtype=DataType.VARCHAR, max_length=100),
+                    FieldSchema(name="document_id", dtype=DataType.VARCHAR, max_length=36),
+                    FieldSchema(name="text", dtype=DataType.VARCHAR, max_length=65535),
+                    FieldSchema(name="vector", dtype=DataType.FLOAT_VECTOR, dim=1024),
+                    FieldSchema(name="filename", dtype=DataType.VARCHAR, max_length=255),
+                    FieldSchema(name="file_path", dtype=DataType.VARCHAR, max_length=1024),
+                    FieldSchema(name="upload_time", dtype=DataType.VARCHAR, max_length=64),
+                    FieldSchema(name="file_type", dtype=DataType.VARCHAR, max_length=64),
+                ]
+                debug("db_type 为空，使用默认 fields")
+            else:
+                # db_type 不为空，集合不存在时必须提供 fields
+                if fields is None:
+                    debug(f"集合 {collection_name} 不存在，且未提供 fields")
+                    raise ValueError(f"集合 {collection_name} 不存在，必须提供 fields 参数")
+
+            # 定义 dtype 映射
+            dtype_map = {
+                "VARCHAR": DataType.VARCHAR,
+                "FLOAT_VECTOR": DataType.FLOAT_VECTOR,
+                "BINARY_VECTOR": DataType.BINARY_VECTOR,
+                "INT64": DataType.INT64,
+                "INT32": DataType.INT32,
+                "FLOAT": DataType.FLOAT,
+                "DOUBLE": DataType.DOUBLE,
+                "BOOL": DataType.BOOL,
+                "JSON": DataType.JSON
+            }
+
+            # 如果 fields 是 JSON 格式，转换为 FieldSchema 对象
+            if all(isinstance(f, dict) for f in fields):
+                try:
+                    converted_fields = []
+                    for f in fields:
+                        if f["dtype"] not in dtype_map:
+                            debug(f"无效的 dtype: {f['dtype']}")
+                            raise ValueError(f"无效的 dtype: {f['dtype']}")
+                        dtype = dtype_map[f["dtype"]]
+                        params = {
+                            "name": f["name"],
+                            "dtype": dtype,
+                            "is_primary": f.get("is_primary", False),
+                            "auto_id": f.get("auto_id", False)
+                        }
+                        if dtype == DataType.VARCHAR:
+                            if "max_length" not in f or not isinstance(f["max_length"], int) or f["max_length"] <= 0:
+                                debug(f"VARCHAR 字段 {f['name']} 必须指定有效的 max_length")
+                                raise ValueError(f"VARCHAR 字段 {f['name']} 必须指定有效的 max_length")
+                            params["max_length"] = f["max_length"]
+                        if dtype in [DataType.FLOAT_VECTOR, DataType.BINARY_VECTOR]:
+                            if "dim" not in f or not isinstance(f["dim"], int) or f["dim"] <= 0:
+                                debug(f"vector 字段 {f['name']} 必须指定有效的 dim")
+                                raise ValueError(f"vector 字段 {f['name']} 必须指定有效的 dim")
+                            params["dim"] = f["dim"]
+                        converted_fields.append(FieldSchema(**params))
+                    fields = converted_fields
+                    debug("成功将 JSON fields 转换为 FieldSchema 对象")
+                except KeyError as e:
+                    debug(f"fields 中的 JSON 格式缺少必要字段: {str(e)}")
+                    raise ValueError(f"fields 中的 JSON 格式缺少必要字段: {str(e)}")
+
+            # 验证 fields
+            if not isinstance(fields, list) or not all(isinstance(f, FieldSchema) for f in fields):
+                raise ValueError("fields 必须是 FieldSchema 对象的列表")
+
+            # 检查 primary key
+            primary_keys = [f for f in fields if f.is_primary]
+            if len(primary_keys) != 1:
+                raise ValueError("fields 必须正好包含一个 primary key 字段")
+            primary_key = primary_keys[0]
+            if primary_key.dtype not in [DataType.INT64, DataType.VARCHAR]:
+                raise ValueError("primary key 字段类型必须是 INT64 或 VARCHAR")
+            if primary_key.dtype == DataType.VARCHAR and not hasattr(primary_key, 'max_length'):
+                raise ValueError("VARCHAR primary key 必须指定 max_length")
+
+            # 检查 vector 字段
+            vector_fields = [f for f in fields if f.dtype in [DataType.FLOAT_VECTOR, DataType.BINARY_VECTOR]]
+            if not vector_fields:
+                raise ValueError("fields 必须包含至少一个 vector 字段")
+            for vf in vector_fields:
+                if 'dim' not in vf.params or not isinstance(vf.params['dim'], int) or vf.params['dim'] <= 0:
+                    raise ValueError(f"vector 字段 {vf.name} 必须指定有效的 dim 参数")
+
+            # 检查字段名称唯一性
+            field_names = [f.name for f in fields]
+            if len(field_names) != len(set(field_names)):
+                raise ValueError("fields 中的 name 必须唯一")
+
+            # 检查其他字段约束
+            for f in fields:
+                if f.dtype == DataType.VARCHAR and not hasattr(f, 'max_length'):
+                    raise ValueError(f"VARCHAR 字段 {f.name} 必须指定 max_length")
+                if f.name == "" or len(f.name) > 255:
+                    raise ValueError(f"字段名称 {f.name} 无效（不能为空或超过 255 字符）")
+
+            debug(f"fields 验证通过，字段数量: {len(fields)}")
+
+            # 创建集合
+            schema = CollectionSchema(
+                fields=fields,
+                description="统一数据集合，包含用户ID、知识库ID、document_id 和元数据字段",
+                auto_id=any(f.auto_id for f in primary_keys),
+                primary_field=primary_key.name,
+            )
+
+            collection = Collection(collection_name, schema)
+            # 创建 vector 索引
+            for f in vector_fields:
+                collection.create_index(
+                    field_name=f.name,
+                    index_params={"index_type": "AUTOINDEX", "metric_type": "COSINE"}
+                )
+            # 创建 scalar 索引（可选）
+            for f in fields:
+                if f.dtype not in [DataType.FLOAT_VECTOR, DataType.BINARY_VECTOR, DataType.JSON]:
+                    collection.create_index(
+                        field_name=f.name,
+                        index_params={"index_type": "INVERTED"}
+                    )
+            collection.load()
+            debug(f"成功创建并加载集合: {collection_name}")
+            return {
+                "status": "success",
+                "collection_name": collection_name,
+                "message": f"集合 {collection_name} 创建成功"
+            }
         except Exception as e:
             error(f"创建集合失败: {str(e)}")
             return {
@@ -285,14 +345,18 @@ class MilvusDBConnection(BaseDBConnection):
             }
 
     async def _insert_document(self, chunks: List[Dict], db_type: str = "") -> Dict[str, Any]:
-        """插入文档到 Milvus"""
+        """插入文档到 Milvus，支持动态 schema"""
         collection_name = "ragdb" if not db_type else f"ragdb_{db_type}"
-        document_id = chunks[0]["document_id"] if chunks else ""
+        document_id = chunks[0].get("pk", chunks[0].get("document_id", "")) if chunks else ""
         try:
-            # 检查集合是否存在
+            debug(f"_insert_document called with db_type={db_type}, chunks_count={len(chunks) if chunks else 0}")
+
+            # 检查集合是否存在 - 不传递 fields，依赖 _create_collection 的逻辑
             create_result = await self._create_collection(db_type)
             if create_result["status"] == "error":
                 raise RuntimeError(f"集合创建失败: {create_result['message']}")
+            collection_name = create_result["collection_name"]
+            debug(f"Collection ready: {collection_name}")
 
             # 检查输入数据
             if not chunks:
@@ -300,87 +364,55 @@ class MilvusDBConnection(BaseDBConnection):
             for chunk in chunks:
                 if not isinstance(chunk, dict):
                     raise ValueError("每个 chunk 必须是一个字典")
-                required_fields = ["text", "vector", "document_id", "filename", "file_path", "upload_time", "file_type",
-                                   "userid", "knowledge_base_id"]
-                if not all(k in chunk for k in required_fields):
-                    raise ValueError(f"chunk 缺少必要字段: {', '.join(set(required_fields) - set(chunk.keys()))}")
-                if not isinstance(chunk["vector"], list) or len(chunk["vector"]) != 1024:
-                    raise ValueError("vector 必须是长度为 1024 的浮点数列表")
 
-            # 验证 userid 和 knowledge_base_id 一致性
-            if len(set(chunk["userid"] for chunk in chunks)) > 1:
-                raise ValueError("所有 chunk 的 userid 必须一致")
-            if len(set(chunk["knowledge_base_id"] for chunk in chunks)) > 1:
-                raise ValueError("所有 chunk 的 knowledge_base_id 必须一致")
-            if len(set(chunk["filename"] for chunk in chunks)) > 1:
-                raise ValueError("所有 chunk 的 filename 必须一致")
+            # # 字段映射
+            # for chunk in chunks:
+            #     if 'orgid' in chunk and 'userid' not in chunk:
+            #         chunk['userid'] = chunk['orgid']
+            #     if 'fiid' in chunk and 'knowledge_base_id' not in chunk:
+            #         chunk['knowledge_base_id'] = chunk['fiid']
+            #     if 'embedding' in chunk and 'vector' not in chunk:
+            #         chunk['vector'] = chunk['embedding']
+            #     if 'pk' not in chunk:
+            #         chunk['pk'] = chunk.get('document_id', str(uuid.uuid4()))
+            # debug(f"Sample chunk after mapping: {chunks[0] if chunks else {} }")
 
-            # 检查是否已存在相同的 userid、knowledge_base_id 和 filename
+            # 加载集合并获取 schema
             collection = Collection(collection_name)
             collection.load()
-            # expr = f"userid == '{chunks[0]['userid']}' and knowledge_base_id == '{chunks[0]['knowledge_base_id']}' and filename == '{chunks[0]['filename']}'"
-            # debug(f"检查重复文档: {expr}")
-            # results = collection.query(expr=expr, output_fields=["document_id"], limit=1)
-            # if results:
-            #     debug(
-            #         f"找到重复文档: userid={chunks[0]['userid']}, knowledge_base_id={chunks[0]['knowledge_base_id']}, filename={chunks[0]['filename']}")
-            #     return {
-            #         "status": "error",
-            #         "document_id": document_id,
-            #         "collection_name": collection_name,
-            #         "message": f"文档已存在: userid={chunks[0]['userid']}, knowledge_base_id={chunks[0]['knowledge_base_id']}, filename={chunks[0]['filename']}",
-            #         "status_code": 400
-            #     }
+            schema_fields = [field.name for field in collection.schema.fields if not field.auto_id]
+            vector_fields = [field.name for field in collection.schema.fields if
+                             field.dtype in [DataType.FLOAT_VECTOR, DataType.BINARY_VECTOR]]
+            debug(f"Schema fields: {schema_fields}, Vector fields: {vector_fields}")
 
-            # 提取数据
-            userids = [chunk["userid"] for chunk in chunks]
-            knowledge_base_ids = [chunk["knowledge_base_id"] for chunk in chunks]
-            texts = [chunk["text"] for chunk in chunks]
-            embeddings = [chunk["vector"] for chunk in chunks]
-            document_ids = [chunk["document_id"] for chunk in chunks]
-            filenames = [chunk["filename"] for chunk in chunks]
-            file_paths = [chunk["file_path"] for chunk in chunks]
-            upload_times = [chunk["upload_time"] for chunk in chunks]
-            file_types = [chunk["file_type"] for chunk in chunks]
+            # 验证 chunks 是否包含所有必要字段
+            for chunk in chunks:
+                missing_fields = [f for f in schema_fields if f not in chunk]
+                if missing_fields:
+                    raise ValueError(f"chunk 缺少必要字段: {', '.join(missing_fields)}")
+                for vector_field in vector_fields:
+                    vector_dim = next(
+                        field.params["dim"] for field in collection.schema.fields if field.name == vector_field)
+                    if not isinstance(chunk[vector_field], list) or len(chunk[vector_field]) != vector_dim:
+                        raise ValueError(f"{vector_field} 必须是长度为 {vector_dim} 的浮点数列表")
 
             # 构造插入数据
-            data = {
-                "userid": userids,
-                "knowledge_base_id": knowledge_base_ids,
-                "document_id": document_ids,
-                "text": texts,
-                "vector": embeddings,
-                "filename": filenames,
-                "file_path": file_paths,
-                "upload_time": upload_times,
-                "file_type": file_types,
-            }
+            data = {field: [] for field in schema_fields}
+            for chunk in chunks:
+                for field in schema_fields:
+                    data[field].append(chunk[field])
 
-            schema_fields = [field.name for field in collection.schema.fields if field.name != "pk"]
-            debug(f"Schema fields: {schema_fields}")
-            debug(f"Data keys: {list(data.keys())}")
-            if list(data.keys()) != schema_fields:
-                raise ValueError(f"数据字段顺序不匹配，期望: {schema_fields}, 实际: {list(data.keys())}")
-
-            collection.insert([data[field.name] for field in collection.schema.fields if field.name != "pk"])
+            # 插入数据
+            collection.insert([data[field] for field in schema_fields])
             collection.flush()
-            debug(f"成功插入 {len(texts)} 个文档到集合 {collection_name}")
+            debug(f"成功插入 {len(chunks)} 个文档到集合 {collection_name}")
             return {
                 "status": "success",
                 "document_id": document_id,
                 "collection_name": collection_name,
-                "message": f"成功插入 {len(texts)} 个文档到 {collection_name}",
+                "message": f"成功插入 {len(chunks)} 个文档到 {collection_name}",
                 "status_code": 200
             }
-        # except MilvusException as e:
-        #     error(f"Milvus 插入失败: {str(e)}, 堆栈: {traceback.format_exc()}")
-        #     return {
-        #         "status": "error",
-        #         "document_id": document_id,
-        #         "collection_name": collection_name,
-        #         "message": f"Milvus 插入失败: {str(e)}",
-        #         "status_code": 400
-        #     }
         except Exception as e:
             error(f"插入文档失败: {str(e)}, 堆栈: {traceback.format_exc()}")
             return {
@@ -391,10 +423,10 @@ class MilvusDBConnection(BaseDBConnection):
                 "status_code": 400
             }
 
-    async def _delete_document(self, userid: str, file_path: str, knowledge_base_id: str, document_id:str, db_type: str = "") -> Dict[
+    async def _delete_document(self, userid: str, knowledge_base_id: str, document_id:str, file_path: "", db_type: str = "") -> Dict[
         str, Any]:
         """删除用户指定文件数据，仅处理 Milvus 记录"""
-        collection_name = "ragdb" if not db_type else f"ragdb_{db_type}"
+        collection_name = "ragdb" if not db_type or db_type == "ragdb" else f"ragdb_{db_type}"
         try:
             if not utility.has_collection(collection_name):
                 debug(f"集合 {collection_name} 不存在")
@@ -464,8 +496,18 @@ class MilvusDBConnection(BaseDBConnection):
 
     async def _delete_knowledge_base(self, db_type: str, userid: str, knowledge_base_id: str) -> Dict[str, Any]:
         """删除用户的整个知识库，仅处理 Milvus 记录"""
-        collection_name = "ragdb" if not db_type else f"ragdb_{db_type}"
+        collection_name = "ragdb" if not db_type or db_type == "ragdb" else f"ragdb_{db_type}"
         try:
+            if not userid:
+                raise ValueError("userid 不能为空")
+            if not knowledge_base_id:
+                raise ValueError("knowledge_base_id 不能为空")
+            if len(userid) > 100 or len(knowledge_base_id) > 100 or (db_type and len(db_type) > 100):
+                raise ValueError("userid, knowledge_base_id 或 db_type 的长度超出限制")
+
+            debug(
+                f"删除知识库参数: userid={userid}, knowledge_base_id={knowledge_base_id}, db_type={db_type}, collection_name={collection_name}")
+
             if not utility.has_collection(collection_name):
                 debug(f"集合 {collection_name} 不存在")
                 return {
@@ -478,6 +520,7 @@ class MilvusDBConnection(BaseDBConnection):
 
             try:
                 collection = Collection(collection_name)
+                collection.load()
                 debug(f"加载集合: {collection_name}")
             except Exception as e:
                 error(f"加载集合 {collection_name} 失败: {str(e)}")
@@ -489,29 +532,29 @@ class MilvusDBConnection(BaseDBConnection):
                     "status_code": 400
                 }
 
+            # 检查集合 schema
+            schema_fields = [field.name for field in collection.schema.fields]
+            debug(f"集合 {collection_name} schema: {schema_fields}")
+
             deleted_files = []
-            try:
-                expr = f"userid == '{userid}' and knowledge_base_id == '{knowledge_base_id}'"
-                debug(f"查询表达式: {expr}")
-                results = collection.query(
-                    expr=expr,
-                    output_fields=["file_path"],
-                    limit=1000
-                )
-                if results:
-                    deleted_files = list(set(result["file_path"] for result in results if "file_path" in result))
-                    debug(f"找到 {len(deleted_files)} 个唯一文件: {deleted_files}")
-                else:
-                    debug(f"没有找到 userid={userid}, knowledge_base_id={knowledge_base_id} 的记录")
-            except Exception as e:
-                error(f"查询 file_path 失败: {str(e)}")
-                return {
-                    "status": "error",
-                    "collection_name": collection_name,
-                    "deleted_files": [],
-                    "message": f"查询 file_path 失败: {str(e)}",
-                    "status_code": 400
-                }
+            if collection_name == "ragdb" and "file_path" in schema_fields:
+                try:
+                    expr = f"userid == '{userid}' and knowledge_base_id == '{knowledge_base_id}'"
+                    debug(f"查询表达式: {expr}")
+                    results = collection.query(
+                        expr=expr,
+                        output_fields=["file_path"],
+                        limit=1000
+                    )
+                    if results:
+                        deleted_files = list(set(result["file_path"] for result in results if result["file_path"]))
+                        debug(f"找到 {len(deleted_files)} 个唯一文件: {deleted_files}")
+                    else:
+                        debug(f"没有找到 userid={userid}, knowledge_base_id={knowledge_base_id} 的记录")
+                except Exception as e:
+                    error(f"查询 file_path 失败: {str(e)}")
+                    # 继续执行删除操作，不因查询失败而中断
+                    deleted_files = []
 
             total_deleted = 0
             try:
@@ -561,18 +604,16 @@ class MilvusDBConnection(BaseDBConnection):
             }
 
     async def _search_query(self, query_vector: List[float], userid: str,
-                           knowledge_base_ids: List[str], limit: int = 5, offset: int = 0, db_type: str = "") -> Dict[str, Any]:
-        """基于向量搜索 Milvus 集合"""
-        collection_name = "ragdb" if not db_type else f"ragdb_{db_type}"
+                            knowledge_base_ids: List[str] | None, limit: int = 5, offset: int = 0, db_type: str = "") -> Dict[str, Any]:
+        """基于向量搜索 Milvus 集合（knowledge_base_ids 可为空）"""
         timing_stats = {}
         start_time = time.time()
         try:
+            # ---------- 参数校验 ----------
             if not query_vector or not isinstance(query_vector, list) or len(query_vector) != 1024:
                 raise ValueError("query_vector 必须是长度为 1024 的浮点数列表")
             if not userid:
                 raise ValueError("userid 不能为空")
-            if not knowledge_base_ids:
-                raise ValueError("knowledge_base_ids 不能为空")
             if len(userid) > 100:
                 raise ValueError("userid 的长度超出限制")
             if limit <= 0 or limit > 16384:
@@ -581,80 +622,117 @@ class MilvusDBConnection(BaseDBConnection):
                 raise ValueError("offset 不能为负数")
             if limit + offset > 16384:
                 raise ValueError("limit + offset 不能超过 16384")
-            for kb_id in knowledge_base_ids:
-                if not isinstance(kb_id, str):
-                    raise ValueError(f"knowledge_base_id 必须是字符串: {kb_id}")
-                if len(kb_id) > 100:
-                    raise ValueError(f"knowledge_base_id 长度超出 100 个字符: {kb_id}")
+            if knowledge_base_ids is not None:
+                for kb_id in knowledge_base_ids:
+                    if not isinstance(kb_id, str) or len(kb_id) > 100:
+                        raise ValueError(f"knowledge_base_id 必须是字符串且长度 ≤ 100: {kb_id}")
+
+            # ---------- 集合名称 ----------
+            collection_name = "ragdb" if not db_type or db_type == "ragdb" else f"ragdb_{db_type}"
+            debug(f"目标集合: {collection_name}")
 
             if not utility.has_collection(collection_name):
                 debug(f"集合 {collection_name} 不存在")
                 return {"results": [], "timing": timing_stats}
 
+            # ---------- 加载集合 ----------
             try:
                 collection = Collection(collection_name)
                 collection.load()
-                debug(f"加载集合: {collection_name}")
                 timing_stats["collection_load"] = time.time() - start_time
-                debug(f"集合加载耗时: {timing_stats['collection_load']:.3f} 秒")
             except Exception as e:
                 error(f"加载集合 {collection_name} 失败: {str(e)}")
                 return {"results": [], "timing": timing_stats}
 
+            # ---------- 动态 schema ----------
+            schema_fields = [f.name for f in collection.schema.fields]
+            is_ragdb = collection_name == "ragdb"
+            output_fields = (
+                ["text", "userid", "document_id", "filename", "file_path", "upload_time", "file_type",
+                 "knowledge_base_id"]
+                if is_ragdb else
+                ["document_id", "userid", "knowledge_base_id", "text"]
+            )
+            output_fields = [f for f in output_fields if f in schema_fields]
+
+            # ---------- 动态构建表达式 ----------
+            if is_ragdb:
+                expr_parts = [f"userid == '{userid}'"]
+                if knowledge_base_ids:
+                    kb_expr = " or ".join([f"knowledge_base_id == '{kb}'" for kb in knowledge_base_ids])
+                    expr_parts.append(f"({kb_expr})")
+                expr = " and ".join(expr_parts)
+            else:
+                expr_parts = [f"userid == '{userid}'"]
+                if knowledge_base_ids:
+                    kb_expr = " or ".join([f"knowledge_base_id == '{kb}'" for kb in knowledge_base_ids])
+                    expr_parts.append(f"({kb_expr})")
+                expr = " and ".join(expr_parts)
+
+            debug(f"搜索表达式: {expr}")
+
+            # ---------- 保留你指定的 search 调用 ----------
             search_start = time.time()
             search_params = {"metric_type": "COSINE", "params": {"nprobe": 10}}
-            kb_id_expr = " or ".join([f"knowledge_base_id == '{kb_id}'" for kb_id in knowledge_base_ids])
-            expr = f"userid == '{userid}' and ({kb_id_expr})"
-            debug(f"搜索表达式: {expr}")
 
             try:
                 results = collection.search(
                     data=[query_vector],
                     anns_field="vector",
                     param=search_params,
-                    limit=100,
-                    expr=expr,
-                    output_fields=["text", "userid", "document_id", "filename", "file_path", "upload_time",
-                                   "file_type"],
-                    offset=offset
+                    limit=100,  # 保留
+                    expr=expr,  # 动态
+                    output_fields=output_fields,  # 动态
+                    offset=offset  # 保留
                 )
             except Exception as e:
                 error(f"搜索失败: {str(e)}")
                 return {"results": [], "timing": timing_stats}
-            timing_stats["vector_search"] = time.time() - search_start
-            debug(f"向量搜索耗时: {timing_stats['vector_search']:.3f} 秒")
 
-            search_results = []
+            timing_stats["vector_search"] = time.time() - search_start
+
+            # ---------- 统一结果结构 + 去重 ----------
+            raw_results = []
             for hits in results:
                 for hit in hits:
-                    metadata = {
-                        "userid": hit.entity.get("userid"),
-                        "document_id": hit.entity.get("document_id"),
-                        "filename": hit.entity.get("filename"),
-                        "file_path": hit.entity.get("file_path"),
-                        "upload_time": hit.entity.get("upload_time"),
-                        "file_type": hit.entity.get("file_type")
-                    }
-                    result = {
-                        "text": hit.entity.get("text"),
-                        "distance": hit.distance,
-                        "source": "vector_query",
-                        "metadata": metadata
-                    }
-                    search_results.append(result)
-                    debug(
-                        f"命中: text={result['text'][:100]}..., distance={hit.distance}, filename={metadata['filename']}")
+                    if is_ragdb:
+                        metadata = {
+                            "userid": hit.entity.get("userid"),
+                            "document_id": hit.entity.get("document_id"),
+                            "filename": hit.entity.get("filename"),
+                            "file_path": hit.entity.get("file_path"),
+                            "upload_time": hit.entity.get("upload_time"),
+                            "file_type": hit.entity.get("file_type"),
+                            "knowledge_base_id": hit.entity.get("knowledge_base_id")
+                        }
+                        raw_results.append({
+                            "text": hit.entity.get("text"),
+                            "distance": 1.0 - hit.distance,
+                            "metadata": metadata
+                        })
+                    else:
+                        metadata = {
+                            "document_id": hit.entity.get("document_id"),
+                            "userid": hit.entity.get("userid"),
+                            "knowledge_base_id": hit.entity.get("knowledge_base_id"),
+                        }
+                        raw_results.append({
+                            "text": hit.entity.get("text"),
+                            "distance": 1.0 - hit.distance,
+                            "metadata": metadata
+                        })
 
+            # ---------- 去重+ limit ----------
             dedup_start = time.time()
             unique_results = []
             seen_texts = set()
-            for result in sorted(search_results, key=lambda x: x['distance'], reverse=True):
+            for result in sorted(raw_results, key=lambda x: x['distance'], reverse=True):
                 if result['text'] not in seen_texts:
                     unique_results.append(result)
                     seen_texts.add(result['text'])
             timing_stats["deduplication"] = time.time() - dedup_start
             debug(f"去重耗时: {timing_stats['deduplication']:.3f} 秒")
-            info(f"去重后结果数量: {len(unique_results)} (原始数量: {len(search_results)})")
+            info(f"去重后结果数量: {len(unique_results)} (原始数量: {len(raw_results)})")
 
             timing_stats["total_time"] = time.time() - start_time
             info(f"向量搜索完成，返回 {len(unique_results)} 条结果，总耗时: {timing_stats['total_time']:.3f} 秒")
@@ -664,163 +742,316 @@ class MilvusDBConnection(BaseDBConnection):
             error(f"向量搜索失败: {str(e)}")
             return {"results": [], "timing": timing_stats}
 
-    async def _list_user_files(self, userid: str, db_type: str = "") -> Dict[str, List[Dict]]:
-        """列出用户的所有知识库及其文件，按 knowledge_base_id 分组"""
-        collection_name = "ragdb" if not db_type else f"ragdb_{db_type}"
+    # async def _search_query(self, query_vector: List[float], userid: str,
+    #                        knowledge_base_ids: List[str], limit: int = 5, offset: int = 0, db_type: str = "") -> Dict[str, Any]:
+    #     """基于向量搜索 Milvus 集合"""
+    #     collection_name = "ragdb" if not db_type else f"ragdb_{db_type}"
+    #     timing_stats = {}
+    #     start_time = time.time()
+    #     try:
+    #         if not query_vector or not isinstance(query_vector, list) or len(query_vector) != 1024:
+    #             raise ValueError("query_vector 必须是长度为 1024 的浮点数列表")
+    #         if not userid:
+    #             raise ValueError("userid 不能为空")
+    #         if not knowledge_base_ids:
+    #             raise ValueError("knowledge_base_ids 不能为空")
+    #         if len(userid) > 100:
+    #             raise ValueError("userid 的长度超出限制")
+    #         if limit <= 0 or limit > 16384:
+    #             raise ValueError("limit 必须在 1 到 16384 之间")
+    #         if offset < 0:
+    #             raise ValueError("offset 不能为负数")
+    #         if limit + offset > 16384:
+    #             raise ValueError("limit + offset 不能超过 16384")
+    #         for kb_id in knowledge_base_ids:
+    #             if not isinstance(kb_id, str):
+    #                 raise ValueError(f"knowledge_base_id 必须是字符串: {kb_id}")
+    #             if len(kb_id) > 100:
+    #                 raise ValueError(f"knowledge_base_id 长度超出 100 个字符: {kb_id}")
+    #
+    #         if not utility.has_collection(collection_name):
+    #             debug(f"集合 {collection_name} 不存在")
+    #             return {"results": [], "timing": timing_stats}
+    #
+    #         try:
+    #             collection = Collection(collection_name)
+    #             collection.load()
+    #             debug(f"加载集合: {collection_name}")
+    #             timing_stats["collection_load"] = time.time() - start_time
+    #             debug(f"集合加载耗时: {timing_stats['collection_load']:.3f} 秒")
+    #         except Exception as e:
+    #             error(f"加载集合 {collection_name} 失败: {str(e)}")
+    #             return {"results": [], "timing": timing_stats}
+    #
+    #         search_start = time.time()
+    #         search_params = {"metric_type": "COSINE", "params": {"nprobe": 10}}
+    #         kb_id_expr = " or ".join([f"knowledge_base_id == '{kb_id}'" for kb_id in knowledge_base_ids])
+    #         expr = f"userid == '{userid}' and ({kb_id_expr})"
+    #         debug(f"搜索表达式: {expr}")
+    #
+    #         try:
+    #             results = collection.search(
+    #                 data=[query_vector],
+    #                 anns_field="vector",
+    #                 param=search_params,
+    #                 limit=100,
+    #                 expr=expr,
+    #                 output_fields=["text", "userid", "document_id", "filename", "file_path", "upload_time",
+    #                                "file_type"],
+    #                 offset=offset
+    #             )
+    #         except Exception as e:
+    #             error(f"搜索失败: {str(e)}")
+    #             return {"results": [], "timing": timing_stats}
+    #         timing_stats["vector_search"] = time.time() - search_start
+    #         debug(f"向量搜索耗时: {timing_stats['vector_search']:.3f} 秒")
+    #
+    #         search_results = []
+    #         for hits in results:
+    #             for hit in hits:
+    #                 metadata = {
+    #                     "userid": hit.entity.get("userid"),
+    #                     "document_id": hit.entity.get("document_id"),
+    #                     "filename": hit.entity.get("filename"),
+    #                     "file_path": hit.entity.get("file_path"),
+    #                     "upload_time": hit.entity.get("upload_time"),
+    #                     "file_type": hit.entity.get("file_type")
+    #                 }
+    #                 result = {
+    #                     "text": hit.entity.get("text"),
+    #                     "distance": hit.distance,
+    #                     "source": "vector_query",
+    #                     "metadata": metadata
+    #                 }
+    #                 search_results.append(result)
+    #                 debug(
+    #                     f"命中: text={result['text'][:100]}..., distance={hit.distance}, filename={metadata['filename']}")
+    #
+    #         dedup_start = time.time()
+    #         unique_results = []
+    #         seen_texts = set()
+    #         for result in sorted(search_results, key=lambda x: x['distance'], reverse=True):
+    #             if result['text'] not in seen_texts:
+    #                 unique_results.append(result)
+    #                 seen_texts.add(result['text'])
+    #         timing_stats["deduplication"] = time.time() - dedup_start
+    #         debug(f"去重耗时: {timing_stats['deduplication']:.3f} 秒")
+    #         info(f"去重后结果数量: {len(unique_results)} (原始数量: {len(search_results)})")
+    #
+    #         timing_stats["total_time"] = time.time() - start_time
+    #         info(f"向量搜索完成，返回 {len(unique_results)} 条结果，总耗时: {timing_stats['total_time']:.3f} 秒")
+    #         return {"results": unique_results[:limit], "timing": timing_stats}
+    #
+    #     except Exception as e:
+    #         error(f"向量搜索失败: {str(e)}")
+    #         return {"results": [], "timing": timing_stats}
+
+    async def _list_user_files(self, userid: str, db_type: str = "") -> Dict[str, Any]:
+        """列出用户的所有知识库及其文件，按 knowledge_base_id 分组（仅 ragdb）"""
         try:
-            info(f"列出用户文件: userid={userid}, db_type={db_type}")
+            debug(f"列出用户文件: userid={userid}, db_type={db_type}")
 
             if not userid:
                 raise ValueError("userid 不能为空")
             if (db_type and len(db_type) > 100) or len(userid) > 100:
                 raise ValueError("userid 或 db_type 的长度超出限制")
 
-            if not utility.has_collection(collection_name):
-                debug(f"集合 {collection_name} 不存在")
-                return {}
-
-            try:
-                collection = Collection(collection_name)
-                collection.load()
-                debug(f"加载集合: {collection_name}")
-            except Exception as e:
-                error(f"加载集合 {collection_name} 失败: {str(e)}")
-                return {}
-
-            expr = f"userid == '{userid}'"
-            debug(f"查询表达式: {expr}")
-
-            try:
-                results = collection.query(
-                    expr=expr,
-                    output_fields=["document_id", "filename", "file_path", "upload_time", "file_type", "knowledge_base_id"],
-                    limit=1000
-                )
-            except Exception as e:
-                error(f"查询用户文件失败: {str(e)}")
-                return {}
-
-            files_by_kb = {}
-            seen_document_ids = set()
-            for result in results:
-                document_id = result.get("document_id")
-                kb_id = result.get("knowledge_base_id")
-                if document_id not in seen_document_ids:
-                    seen_document_ids.add(document_id)
-                    file_info = {
-                        "document_id": document_id,
-                        "filename": result.get("filename"),
-                        "file_path": result.get("file_path"),
-                        "upload_time": result.get("upload_time"),
-                        "file_type": result.get("file_type"),
-                        "knowledge_base_id": kb_id
-                    }
-                    if kb_id not in files_by_kb:
-                        files_by_kb[kb_id] = []
-                    files_by_kb[kb_id].append(file_info)
-                    debug(f"找到文件: document_id={document_id}, filename={result.get('filename')}, knowledge_base_id={kb_id}")
-
-            info(f"找到 {len(seen_document_ids)} 个文件，userid={userid}, 知识库数量={len(files_by_kb)}")
-            return files_by_kb
-
-        except Exception as e:
-            error(f"列出用户文件失败: {str(e)}")
-            return {}
-
-    async def _list_all_knowledge_bases(self, db_type: str = "") -> Dict[str, Any]:
-        """列出数据库中所有用户的知识库及其文件，按用户分组"""
-        collection_name = "ragdb" if not db_type else f"ragdb_{db_type}"
-        try:
-            info(f"列出所有用户的知识库: db_type={db_type}")
-
-            if db_type and "_" in db_type:
-                raise ValueError("db_type 不能包含下划线")
-            if db_type and len(db_type) > 100:
-                raise ValueError("db_type 的长度应小于 100")
+            collection_name = "ragdb" if not db_type or db_type == "ragdb" else f"ragdb_{db_type}"
+            debug(f"目标集合: {collection_name}")
 
             if not utility.has_collection(collection_name):
                 debug(f"集合 {collection_name} 不存在")
                 return {
                     "status": "success",
-                    "users_knowledge_bases": {},
-                    "collection_name": collection_name,
-                    "message": f"集合 {collection_name} 不存在",
-                    "status_code": 200
+                    "files_by_knowledge_base": {} if collection_name == "ragdb" else [],
+                    "collection_name": collection_name
                 }
 
             try:
                 collection = Collection(collection_name)
                 collection.load()
-                debug(f"加载集合: {collection_name}")
             except Exception as e:
                 error(f"加载集合 {collection_name} 失败: {str(e)}")
-                return {
-                    "status": "error",
-                    "users_knowledge_bases": {},
-                    "collection_name": collection_name,
-                    "message": f"加载集合失败: {str(e)}",
-                    "status_code": 400
-                }
+                return {"status": "error", "message": str(e)}
 
-            expr = "userid != ''"
-            debug(f"查询表达式: {expr}")
-            try:
-                results = collection.query(
-                    expr=expr,
-                    output_fields=["userid", "knowledge_base_id", "document_id", "filename", "file_path", "upload_time",
-                                   "file_type"],
-                    limit=10000
-                )
-            except Exception as e:
-                error(f"查询所有用户文件失败: {str(e)}")
-                return {
-                    "status": "error",
-                    "users_knowledge_bases": {},
-                    "collection_name": collection_name,
-                    "message": f"查询失败: {str(e)}",
-                    "status_code": 400
-                }
+            schema_fields = [f.name for f in collection.schema.fields]
+            debug(f"集合 {collection_name} schema: {schema_fields}")
 
-            users_knowledge_bases = {}
+            is_ragdb = collection_name == "ragdb"
+            output_fields = (
+                ["userid", "document_id", "filename", "file_path", "upload_time", "file_type", "knowledge_base_id"]
+                if is_ragdb else
+                ["document_id", "userid", "knowledge_base_id", "text"]
+            )
+            output_fields = [f for f in output_fields if f in schema_fields]
+
+            # 动态构建表达式
+            if "userid" in schema_fields:
+                expr = f"userid == '{userid}'"
+                debug(f"使用顶级字段过滤: {expr}")
+            else:
+                expr = f'metadata["user_id"] == "{userid}"'
+                debug(f"使用 JSON 嵌套字段过滤: {expr}")
+
+            results = collection.query(expr=expr, output_fields=output_fields, limit=1000)
+
+            # 正确初始化（不嵌套）
+            if is_ragdb:
+                files_by_knowledge_base = {}  # {kb_id: [file,...]}
+            else:
+                files_by_knowledge_base = []  # [file1, file2, ...]
+
             seen_document_ids = set()
+
             for result in results:
-                userid = result.get("userid")
+                document_id = result.get("document_id") or result.get("id")
+                if not document_id or document_id in seen_document_ids:
+                    continue
+                seen_document_ids.add(document_id)
+
                 kb_id = result.get("knowledge_base_id")
-                document_id = result.get("document_id")
-                if document_id not in seen_document_ids:
-                    seen_document_ids.add(document_id)
+                if is_ragdb and not kb_id:
+                    continue
+
+                if is_ragdb:
                     file_info = {
+                        "userid": result.get("userid"),
                         "document_id": document_id,
-                        "filename": result.get("filename"),
-                        "file_path": result.get("file_path"),
-                        "upload_time": result.get("upload_time"),
-                        "file_type": result.get("file_type"),
+                        "filename": result.get("filename", ""),
+                        "file_path": result.get("file_path", ""),
+                        "upload_time": result.get("upload_time", ""),
+                        "file_type": result.get("file_type", ""),
                         "knowledge_base_id": kb_id
                     }
-                    if userid not in users_knowledge_bases:
-                        users_knowledge_bases[userid] = {}
-                    if kb_id not in users_knowledge_bases[userid]:
-                        users_knowledge_bases[userid][kb_id] = []
-                    users_knowledge_bases[userid][kb_id].append(file_info)
-                    debug(
-                        f"找到文件: userid={userid}, knowledge_base_id={kb_id}, document_id={document_id}, filename={result.get('filename')}")
+                    files_by_knowledge_base.setdefault(kb_id, []).append(file_info)
+                else:
+                    file_info = {
+                        "document_id": document_id,
+                        "userid": result.get("userid", ""),
+                        "knowledge_base_id": kb_id,
+                        "text": result.get("text", ""),
+                    }
+                    files_by_knowledge_base.append(file_info)
 
-            info(f"找到 {len(seen_document_ids)} 个文件，涉及 {len(users_knowledge_bases)} 个用户")
+                debug(f"找到文件: document_id={document_id}, kb_id={kb_id}, file_info={file_info}")
+
+            info(f"找到 {len(seen_document_ids)} 个文件")
             return {
                 "status": "success",
-                "users_knowledge_bases": users_knowledge_bases,
-                "collection_name": collection_name,
-                "message": f"成功列出 {len(users_knowledge_bases)} 个用户的知识库和文件",
+                "files_by_knowledge_base": files_by_knowledge_base,
+                "collection_name": collection_name
+            }
+
+        except Exception as e:
+            error(f"列出用户文件失败: {str(e)}")
+            return {"status": "error", "message": str(e)}
+
+    async def _list_all_knowledge_bases(self, db_type: str = "") -> Dict[str, Any]:
+        try:
+            debug(f"列出所有知识库: db_type={db_type}")
+
+            collection_names = utility.list_collections()
+            if db_type:
+                target = "ragdb" if db_type == "ragdb" else f"ragdb_{db_type}"
+                collection_names = [n for n in collection_names if n == target]
+            else:
+                collection_names = [n for n in collection_names if n.startswith("ragdb")]
+
+            if not collection_names:
+                return {
+                    "status": "success",
+                    "collections": {},
+                    "collection_names": "none",
+                    "message": "未找到任何以 ragdb 开头的集合",
+                    "status_code": 200
+                }
+
+            collections = {}
+            total_documents = 0
+            skipped_collections = []
+
+            for collection_name in collection_names:
+                if collection_name.startswith("ragdb_"):
+                    db_part = collection_name[len("ragdb_"):]
+                    if "_" in db_part or len(db_part) > 100:
+                        skipped_collections.append(collection_name)
+                        continue
+
+                try:
+                    collection = Collection(collection_name)
+                    collection.load()
+                except Exception as e:
+                    error(f"加载集合 {collection_name} 失败: {str(e)}")
+                    skipped_collections.append(collection_name)
+                    continue
+
+                schema_fields = [f.name for f in collection.schema.fields]
+                debug(f"集合{collection_name}的schme是：{schema_fields}")
+                is_ragdb = collection_name == "ragdb"
+                output_fields = (
+                    ["document_id", "knowledge_base_id", "filename", "text", "userid"]
+                    if is_ragdb else
+                    ["document_id", "userid", "knowledge_base_id", "text"]
+                )
+                output_fields = [f for f in output_fields if f in schema_fields]
+
+                results = collection.query(expr="", output_fields=output_fields, limit=10000)
+                debug(f"集合{collection_name}的查询到{len(results)}条记录")
+                for r in results:
+                    debug(f"集合{collection_name}找到文档：{r}")
+                # 正确初始化
+                if is_ragdb:
+                    collections[collection_name] = {"knowledge_bases": {}}
+                else:
+                    collections[collection_name] = {"knowledge_bases": []}
+
+                seen = set()
+                for result in results:
+                    doc_id = result.get("document_id") or result.get("id")
+                    if not doc_id or doc_id in seen:
+                        continue
+                    seen.add(doc_id)
+
+                    kb_id = result.get("knowledge_base_id")
+                    if is_ragdb and not kb_id:
+                        continue
+
+                    if is_ragdb:
+                        file_info = {
+                            "document_id": doc_id,
+                            "text": result.get("text", "")[:50],
+                            "userid": result.get("userid", ""),
+                            "filename": result.get("filename", ""),
+                            "knowledge_base_id": kb_id
+                        }
+                        collections[collection_name]["knowledge_bases"].setdefault(kb_id, []).append(file_info)
+                    else:
+                        file_info = {
+                            "document_id": doc_id,
+                            "userid": result.get("userid", ""),
+                            "knowledge_base_id": kb_id,
+                            "text": result.get("text", ""),
+                        }
+                        collections[collection_name]["knowledge_bases"].append(file_info)
+
+                    total_documents += 1
+
+            debug(f"找到 {total_documents} 个文档，跨 {len(collections)} 个集合")
+            return {
+                "status": "success",
+                "collections": collections,
+                "collection_names": ",".join(collection_names),
+                "message": f"成功列出 {len(collections)} 个集合，{total_documents} 个文档",
                 "status_code": 200
             }
 
         except Exception as e:
-            error(f"列出所有用户知识库失败: {str(e)}")
+            error(f"列出所有知识库失败: {str(e)}")
             return {
                 "status": "error",
-                "users_knowledge_bases": {},
-                "collection_name": collection_name,
-                "message": f"列出所有用户知识库失败: {str(e)}",
+                "collections": {},
+                "collection_names": "none",
+                "message": f"列出所有知识库失败: {str(e)}",
                 "status_code": 400
             }
 
