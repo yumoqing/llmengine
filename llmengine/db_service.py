@@ -16,10 +16,25 @@ path: /v1/createcollection
 method: POST
 headers: {"Content-Type": "application/json"}
 data: {
-    "db_type": "textdb"  // 可选，若不提供则使用默认集合 ragdb
+    "db_type": "textdb",  // 可选，若不提供则使用默认集合 ragdb
+    "fields": [  // 可选，动态字段定义，格式为 FieldSchema 列表
+        {
+            "name": "pk",
+            "dtype": "VARCHAR",
+            "is_primary": true,
+            "max_length": 36,
+            "auto_id": true
+        },
+        {
+            "name": "vector",
+            "dtype": "FLOAT_VECTOR",
+            "dim": 1024
+        },
+        ...
+    ]
 }
 response:
-- Success: HTTP 200, {"status": "success", "collection_name": "ragdb" or "ragdb_textdb", "message": "集合 ragdb 或 ragdb_textdb 创建成功"}
+- Success: HTTP 200, {"status": "success", "collection_name": "ragdb" or "ragdb_textdb" or "ragdb_textdb_<hash>", "message": "集合 <collection_name> 创建成功或已存在"}
 - Error: HTTP 400, {"status": "error", "collection_name": "ragdb" or "ragdb_textdb", "message": "<error message>"}
 
 2. Delete Collection Endpoint:
@@ -216,12 +231,24 @@ response:
 
 10. Docs Endpoint:
 path: /docs
-method: GET
+method: POST
 response: This help text
+
+11. Initialize Connection Endpoint:
+path: /v1/initialize
+method: POST
+headers: {"Content-Type": "application/json"}
+data: {
+    "db_type": "textdb"  // 可选，若不提供则使用默认集合 ragdb
+}
+response:
+- Success: HTTP 200, {"status": "success", "collection_name": "ragdb" or "ragdb_textdb", "message": "Milvus 连接已初始化，路径: <db_path>"}
+- Error: HTTP 400, {"status": "error", "collection_name": "ragdb" or "ragdb_textdb", "message": "<error message>", "status_code": 400}
 """
 
 def init():
     rf = RegisterFunction()
+    rf.register('initialize', initialize)
     rf.register('createcollection', create_collection)
     rf.register('deletecollection', delete_collection)
     rf.register('insertdocument', insert_document)
@@ -236,22 +263,45 @@ def init():
 async def docs(request, params_kw, *params, **kw):
     return web.Response(text=helptext, content_type='text/plain')
 
-async def create_collection(request, params_kw, *params, **kw):
-    debug(f'{params_kw=}')
+async def initialize(request, params_kw, *params, **kw):
+    debug(f'Received initialize params: {params_kw=}')
     se = ServerEnv()
     engine = se.engine
     db_type = params_kw.get('db_type', '')
     collection_name = "ragdb" if not db_type else f"ragdb_{db_type}"
     try:
-        result = await engine.handle_connection("create_collection", {"db_type": db_type})
+        result = await engine.handle_connection("initialize", {"db_type": db_type})
+        debug(f'Initialize result: {result=}')
+        status = 200 if result.get("status") == "success" else 400
+        return web.json_response(result, dumps=lambda obj: json.dumps(obj, ensure_ascii=False), status=status)
+    except Exception as e:
+        error(f'初始化连接失败: {str(e)}')
+        return web.json_response({
+            "status": "error",
+            "collection_name": collection_name,
+            "message": str(e),
+            "status_code": 400
+        }, dumps=lambda obj: json.dumps(obj, ensure_ascii=False), status=400)
+
+async def create_collection(request, params_kw, *params, **kw):
+    debug(f'{params_kw=}')
+    se = ServerEnv()
+    engine = se.engine
+    db_type = params_kw.get('db_type', '')
+    fields = params_kw.get('fields', None)
+    collection_name = "ragdb" if not db_type else f"ragdb_{db_type}"
+    try:
+        result = await engine.handle_connection("create_collection", {"db_type": db_type, "fields": fields})
         debug(f'{result=}')
-        return web.json_response(result, dumps=lambda obj: json.dumps(obj, ensure_ascii=False))
+        status = 200 if result.get("status") == "success" else 400
+        return web.json_response(result, dumps=lambda obj: json.dumps(obj, ensure_ascii=False), status=status)
     except Exception as e:
         error(f'创建集合失败: {str(e)}')
         return web.json_response({
             "status": "error",
             "collection_name": collection_name,
-            "message": str(e)
+            "message": str(e),
+            "status_code": 400
         }, dumps=lambda obj: json.dumps(obj, ensure_ascii=False), status=400)
 
 async def delete_collection(request, params_kw, *params, **kw):
@@ -313,7 +363,7 @@ async def delete_document(request, params_kw, *params, **kw):
     db_type = params_kw.get('db_type', '')
     collection_name = "ragdb" if not db_type else f"ragdb_{db_type}"
     try:
-        required_fields = ['userid', 'file_path', 'knowledge_base_id', 'document_id']
+        required_fields = ['userid', 'knowledge_base_id', 'document_id']
         missing_fields = [field for field in required_fields if field not in params_kw or not params_kw[field]]
         if missing_fields:
             raise ValueError(f"缺少必填字段: {', '.join(missing_fields)}")
@@ -382,11 +432,11 @@ async def search_query(request, params_kw, *params, **kw):
     db_type = params_kw.get('db_type', '')
     collection_name = "ragdb" if not db_type else f"ragdb_{db_type}"
     try:
-        if not query_vector or not userid or not knowledge_base_ids:
-            debug(f'query_vector, userid 或 knowledge_base_ids 未提供')
+        if not query_vector or not userid:
+            debug(f'query_vector或userid 未提供')
             return web.json_response({
                 "status": "error",
-                "message": "query_vector, userid 或 knowledge_base_ids 未提供",
+                "message": "query_vector或userid未提供",
                 "collection_name": collection_name
             }, dumps=lambda obj: json.dumps(obj, ensure_ascii=False), status=400)
         result = await engine.handle_connection("search_query", {
@@ -419,7 +469,8 @@ async def list_user_files(request, params_kw, *params, **kw):
     engine = se.engine
     userid = params_kw.get('userid', '')
     db_type = params_kw.get('db_type', '')
-    collection_name = "ragdb" if not db_type else f"ragdb_{db_type}"
+    collection_name = "ragdb" if not db_type or db_type == "ragdb" else f"ragdb_{db_type}"
+
     try:
         if not userid:
             debug(f'userid 未提供')
@@ -428,17 +479,13 @@ async def list_user_files(request, params_kw, *params, **kw):
                 "message": "userid 未提供",
                 "collection_name": collection_name
             }, dumps=lambda obj: json.dumps(obj, ensure_ascii=False), status=400)
+        # 直接调用底层逻辑
         result = await engine.handle_connection("list_user_files", {
             "userid": userid,
             "db_type": db_type
         })
-        debug(f'{result=}')
-        response = {
-            "status": "success",
-            "files_by_knowledge_base": result,
-            "collection_name": collection_name
-        }
-        return web.json_response(response, dumps=lambda obj: json.dumps(obj, ensure_ascii=False))
+        debug(f'底层返回: {result=}')
+        return web.json_response(result, dumps=lambda obj: json.dumps(obj, ensure_ascii=False))
     except Exception as e:
         error(f'列出用户文件失败: {str(e)}')
         return web.json_response({
@@ -452,7 +499,6 @@ async def list_all_knowledge_bases(request, params_kw, *params, **kw):
     se = ServerEnv()
     engine = se.engine
     db_type = params_kw.get('db_type', '')
-    collection_name = "ragdb" if not db_type else f"ragdb_{db_type}"
     try:
         result = await engine.handle_connection("list_all_knowledge_bases", {
             "db_type": db_type
@@ -460,18 +506,18 @@ async def list_all_knowledge_bases(request, params_kw, *params, **kw):
         debug(f'{result=}')
         response = {
             "status": result.get("status", "success"),
-            "users_knowledge_bases": result.get("users_knowledge_bases", {}),
-            "collection_name": collection_name,
+            "collections": result.get("collections", {}),
+            "collection_names": result.get("collection_names", "none"),
             "message": result.get("message", ""),
             "status_code": result.get("status_code", 200)
         }
         return web.json_response(response, dumps=lambda obj: json.dumps(obj, ensure_ascii=False), status=response["status_code"])
     except Exception as e:
-        error(f'列出所有用户知识库失败: {str(e)}')
+        error(f'列出所有知识库失败: {str(e)}')
         return web.json_response({
             "status": "error",
-            "users_knowledge_bases": {},
-            "collection_name": collection_name,
+            "collections": {},
+            "collection_names": "none",
             "message": str(e),
             "status_code": 400
         }, dumps=lambda obj: json.dumps(obj, ensure_ascii=False), status=400)

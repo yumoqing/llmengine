@@ -22,8 +22,8 @@
 				"leading":"/idfile",
 				"registerfunction":"idfile"
 			},{
-				"leading": "/v1/m2m",
-				"registerfunction": "m2m"
+				"leading": "/v1/translate",
+				"registerfunction": "translate"
 			},{
 				"leading": "/docs",
 				"registerfunction": "docs"

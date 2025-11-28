@@ -22,7 +22,7 @@ class BgeReranker(BaseReranker):
 
     def process_inputs(self, pairs):
         inputs = self.tokenizer(pairs, padding=True,
-                        truncation=True, return_tensors='pt', max_length=512)
+                        truncation=True, return_tensors='pt', max_length=8096)
         if torch.cuda.is_available():
             inputs = {k: v.to('cuda') for k, v in inputs.items()}
         return inputs

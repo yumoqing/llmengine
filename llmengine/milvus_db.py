@@ -10,7 +10,7 @@ from llmengine.base_db import connection_register, BaseDBConnection
 import time
 import traceback
 import hashlib
-
+import numpy as np
 class MilvusDBConnection(BaseDBConnection):
     _instance = None
     _lock = Lock()
@@ -606,6 +606,21 @@ class MilvusDBConnection(BaseDBConnection):
     async def _search_query(self, query_vector: List[float], userid: str,
                             knowledge_base_ids: List[str] | None, limit: int = 5, offset: int = 0, db_type: str = "") -> Dict[str, Any]:
         """基于向量搜索 Milvus 集合（knowledge_base_ids 可为空）"""
+        # query_vector = np.array(query_vector, dtype=np.float32)
+        # original_norm = np.linalg.norm(query_vector)
+        # debug(f"API 返回向量范数: {original_norm:.10f}")
+        #
+        # if original_norm == 0:
+        #     raise ValueError("zero vector")
+        #
+        # # 强制归一化
+        # query_vector = query_vector / original_norm
+        #
+        # # 重新计算范数
+        # final_norm = np.linalg.norm(query_vector)
+        # debug(f"强制归一化后范数: {final_norm:.10f}")
+        #
+        # query_vector = query_vector.tolist()
         timing_stats = {}
         start_time = time.time()
         try:
@@ -649,7 +664,7 @@ class MilvusDBConnection(BaseDBConnection):
             is_ragdb = collection_name == "ragdb"
             output_fields = (
                 ["text", "userid", "document_id", "filename", "file_path", "upload_time", "file_type",
-                 "knowledge_base_id"]
+                 "knowledge_base_id", "vector"]
                 if is_ragdb else
                 ["document_id", "userid", "knowledge_base_id", "text"]
             )
@@ -685,6 +700,7 @@ class MilvusDBConnection(BaseDBConnection):
                     output_fields=output_fields,  # 动态
                     offset=offset  # 保留
                 )
+                # debug(f"使用的召回索引是：{collection.index().describe()}")
             except Exception as e:
                 error(f"搜索失败: {str(e)}")
                 return {"results": [], "timing": timing_stats}
@@ -703,11 +719,12 @@ class MilvusDBConnection(BaseDBConnection):
                             "file_path": hit.entity.get("file_path"),
                             "upload_time": hit.entity.get("upload_time"),
                             "file_type": hit.entity.get("file_type"),
-                            "knowledge_base_id": hit.entity.get("knowledge_base_id")
+                            "knowledge_base_id": hit.entity.get("knowledge_base_id"),
+                            "vector": hit.entity.get("vector")[:10],
                         }
                         raw_results.append({
                             "text": hit.entity.get("text"),
-                            "distance": 1.0 - hit.distance,
+                            "distance": hit.distance,
                             "metadata": metadata
                         })
                     else:
@@ -718,7 +735,7 @@ class MilvusDBConnection(BaseDBConnection):
                         }
                         raw_results.append({
                             "text": hit.entity.get("text"),
-                            "distance": 1.0 - hit.distance,
+                            "distance": hit.distance,
                             "metadata": metadata
                         })
 
@@ -921,7 +938,7 @@ class MilvusDBConnection(BaseDBConnection):
                         "file_path": result.get("file_path", ""),
                         "upload_time": result.get("upload_time", ""),
                         "file_type": result.get("file_type", ""),
-                        "knowledge_base_id": kb_id
+                        "knowledge_base_id": kb_id,
                     }
                     files_by_knowledge_base.setdefault(kb_id, []).append(file_info)
                 else:
@@ -935,7 +952,7 @@ class MilvusDBConnection(BaseDBConnection):
 
                 debug(f"找到文件: document_id={document_id}, kb_id={kb_id}, file_info={file_info}")
 
-            info(f"找到 {len(seen_document_ids)} 个文件")
+            debug(f"找到 {len(seen_document_ids)} 个文件")
             return {
                 "status": "success",
                 "files_by_knowledge_base": files_by_knowledge_base,

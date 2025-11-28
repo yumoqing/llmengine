@@ -71,7 +71,7 @@ CLIP_MODEL_NAME = "/data/ymq/models/laion/CLIP-ViT-H-14-laion2B-s32B-b79K"
 FRAME_SAMPLE_RATE = 1.0
 FRAME_LIMIT = 64
 AUDIO_SR = 16000
-IMAGE_DIR = Path("/share/wangmeihua/data/mmembedding/image")
+IMAGE_DIR = Path("/share/wangmeihua/data/mmembedding/image/photo")
 AUDIO_DIR = Path("/share/wangmeihua/data/mmembedding/audio")
 VIDEO_DIR = Path("/share/wangmeihua/data/mmembedding/video")
 
@@ -80,8 +80,11 @@ for d in [IMAGE_DIR, AUDIO_DIR, VIDEO_DIR]:
 
 # ------------------- 工具函数 -------------------
 def l2_normalize(v):
+    v = np.array(v, dtype=np.float32)
     norm = np.linalg.norm(v)
-    return v / norm if norm > 1e-10 else v
+    if norm == 0:
+        return v.tolist()
+    return (v / norm).tolist()
 
 def chunked(lst, n):
     for i in range(0, len(lst), n):
@@ -137,7 +140,7 @@ class MM_Embedding:
                         # 1. 提取 base64
                         try:
                             header, b64 = data_uri.split(",", 1)
-                            debug(f"header: {header},b64: {b64}")
+                            debug(f"header: {header}, b64: {b64[:100]}...({len(b64)} chars total)")
                             binary = base64.b64decode(b64)
                         except Exception as e:
                             error(f"解码失败: {str(e)}, 堆栈: {traceback.format_exc()}")
@@ -210,7 +213,7 @@ class MM_Embedding:
                     feats = self.model.get_text_features(**inputs)
             feats = feats.cpu().numpy()
             for t, v in zip(batch, feats):
-                results[t] = {"type": "text", "vector": l2_normalize(v).tolist()}
+                results[t] = {"type": "text", "vector": l2_normalize(v)}
         return results
 
     def _embed_images(self, paths):
@@ -227,9 +230,9 @@ class MM_Embedding:
                 results[p] = {
                     "type": "image",
                     "path": p,
-                    "vector": l2_normalize(v).tolist(),
+                    "vector": l2_normalize(v),
                     "face_count": len(face_vecs),
-                    "face_vecs": [vec.tolist() for vec in face_vecs]
+                    "face_vecs": [vec for vec in face_vecs]
                 }
         return results
 
@@ -270,9 +273,9 @@ class MM_Embedding:
                 results[p] = {
                     "type": "video",
                     "path": p,
-                    "vector": video_vec.tolist(),
+                    "vector": video_vec,
                     "face_count": len(face_vecs),
-                    "face_vecs": [vec.tolist() for vec in face_vecs]
+                    "face_vecs": [vec for vec in face_vecs]
                 }
             except Exception as e:
                 exception(f"Video {p} failed: {e}")
@@ -292,7 +295,7 @@ class MM_Embedding:
                 with torch.no_grad():
                     with torch.amp.autocast('cuda', enabled=USE_FP16):
                         feats = self.model.get_image_features(**inputs)
-                results[p] = {"type": "audio", "vector": l2_normalize(feats.cpu().numpy()[0]).tolist()}
+                results[p] = {"type": "audio", "vector": l2_normalize(feats.cpu().numpy()[0])}
             except Exception as e:
                 exception(f"Audio {p} failed: {e}")
                 results[p] = None
