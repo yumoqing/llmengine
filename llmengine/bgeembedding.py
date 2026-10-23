@@ -12,7 +12,6 @@ class BgeEmbedding(BaseEmbedding):
             model_kwargs={'device': 'cuda' if torch.cuda.is_available() else 'cpu'},
             encode_kwargs={
 				"batch_size": 12,
-				"max_length": 8192,
 				'normalize_embeddings': True
 			}
         )
