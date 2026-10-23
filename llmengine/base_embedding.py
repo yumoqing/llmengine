@@ -28,12 +28,10 @@ class BaseEmbedding:
 		es = self.encode(input)
 		data = []
 		for i, e in enumerate(es):
-			if isinstance(e, np.ndarray):
-				r = e.tolist()
 			d = {
 				"object": "embedding",
 				"index": i,
-				"embedding": e
+				"embedding": e.tolist() if isinstance(e, np.ndarray) else e
 			}
 			data.append(d)
 		return {
