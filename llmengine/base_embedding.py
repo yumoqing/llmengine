@@ -22,7 +22,7 @@ class BaseEmbedding:
 			self.model = self.model.to(device)
 
 	def encode(self, input):
-		es = self.model.encode(input)
+		return self.model.encode(input)
 
 	def embeddings(self, input):
 		es = self.encode(input)
