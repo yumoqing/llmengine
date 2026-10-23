@@ -9,10 +9,12 @@ class BgeReranker(BaseReranker):
             e = Exception(f'{model_id} is not a bge-reranker')
             raise e
         self.tokenizer = AutoTokenizer.from_pretrained(model_id)
-        model = AutoModelForSequenceClassification.from_pretrained(model_id, torch_dtype=torch.bfloat16)
-        model.eval()
         if torch.cuda.is_available():
-            model = model.to('cuda')  
+            model = AutoModelForSequenceClassification.from_pretrained(model_id, torch_dtype=torch.bfloat16)
+            model = model.to('cuda')
+        else:
+            model = AutoModelForSequenceClassification.from_pretrained(model_id)
+        model.eval()
         self.model = model
         self.model_id = model_id
         self.model_name = model_id.split('/')[-1]
@@ -28,8 +30,12 @@ class BgeReranker(BaseReranker):
         return inputs
 
     def compute_logits(self, inputs):
-        with autocast():
-            scores = self.model(**inputs, return_dict=True).logits.view(-1,)
+        if torch.cuda.is_available():
+            with autocast():
+                scores = self.model(**inputs, return_dict=True).logits.view(-1,)
+        else:
+            with torch.no_grad():
+                scores = self.model(**inputs, return_dict=True).logits.view(-1,)
         scores = [s.item() for s in scores]
         return scores
 

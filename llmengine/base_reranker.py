@@ -23,9 +23,13 @@ class BaseReranker:
     def use_mps_if_prosible(self):
         if torch.cuda.is_available():
             device = torch.device("cuda")
-            self.model = self.model.to(device, dtype=torch.float16)  
+            self.model = self.model.to(device, dtype=torch.float16)
+        elif torch.backends.mps.is_available():
+            device = torch.device("mps")
+            self.model = self.model.to(device)
         else:
-            raise Exception("GPU not available, but required for FP16 inference")
+            # CPU fallback: keep model on CPU, ensure float32
+            self.model = self.model.float()
 
     def process_inputs(self, pairs):
         inputs = self.tokenizer(

@@ -10,11 +10,16 @@ class Qwen3Reranker(BaseReranker):
 
         self.tokenizer = AutoTokenizer.from_pretrained(model_id, padding_side='left')
 
-        # 使用 FP16（GPU）
-        self.model = AutoModelForCausalLM.from_pretrained(
-            model_id,
-            torch_dtype=torch.float16
-        ).eval()
+        # Use FP16 on GPU, FP32 on CPU
+        if torch.cuda.is_available():
+            self.model = AutoModelForCausalLM.from_pretrained(
+                model_id,
+                torch_dtype=torch.float16
+            ).eval()
+        else:
+            self.model = AutoModelForCausalLM.from_pretrained(
+                model_id
+            ).eval()
 
         self.model_id = model_id
         self.model_name = model_id.split('/')[-1]
