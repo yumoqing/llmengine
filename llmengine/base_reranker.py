@@ -48,7 +48,7 @@ class BaseReranker:
         return f'<|im_start|>user\n<Instruct>: {instruct}\n<Query>:{query}\n<Document>:\n{doc}<|im_end|>'
 
     def build_assistant_prompt(self):
-        return "<|im_start|>assistant\n<think>\n\n</think>\n\n"
+        return "<|im_start|>assistant\n\n\n"
 
     def compute_logits(self, inputs, **kwargs):
         batch_scores = self.model(**inputs).logits[:, -1, :]
@@ -66,6 +66,12 @@ class BaseReranker:
         pairs = self.build_pairs(query, docs, sys_prompt=sys_prompt, task=task)
         with torch.no_grad():
             inputs = self.process_inputs(pairs)
+            # 真实 token 数（截断后的实际输入）作为计费事实源。
+            # 2026-10-30 前 usage 恒为 0，导致挂 ppid 的 rerank 调用出账 0 元。
+            if 'attention_mask' in inputs:
+                prompt_tokens = int(inputs['attention_mask'].sum())
+            else:
+                prompt_tokens = int(sum(len(ids) for ids in inputs['input_ids']))
             scores = self.compute_logits(inputs)
         data = []
         for i, s in enumerate(scores):
@@ -77,15 +83,15 @@ class BaseReranker:
         data = sorted(data,
                       key=lambda x: x["relevance_score"],
                       reverse=True)
-        if len(data) > top_n:
+        if top_n and len(data) > top_n:
             data = data[:top_n]
         ret = {
             "data": data,
             "object": "rerank.result",
-            "model": self.model_name,
+            "model": getattr(self, 'model_name', self.model_id),
             "usage": {
-                "prompt_tokens": 0,
-                "total_tokens": 0
+                "prompt_tokens": prompt_tokens,
+                "total_tokens": prompt_tokens
             }
         }
         return ret

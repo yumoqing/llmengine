@@ -75,10 +75,16 @@ async def rerank(request, params_kw, *params, **kw):
 		raise e
 	if isinstance(documents, str):
 		documents = [documents]
-	top_n = params_kw.top_n
+	documents = [d if isinstance(d, str) else str(d) for d in documents]
+	if not documents:
+		e = Exception(f'documents is empty')
+		raise e
+	top_n = getattr(params_kw, 'top_n', None)
 	if top_n is None:
 		top_n = 5
-	arr = await f(query, params_kw.documents, top_n)
+	# 2026-10-30：原来把 params_kw.documents（可能是 str）传给引擎，
+	# 字符串会被逐字符迭代成 pairs；改为传规范化后的 list。
+	arr = await f(query, documents, top_n)
 	debug(f'{arr=}, type(arr)')
 	return arr
 
