@@ -1,13 +1,14 @@
 from traceback import format_exc
 import os
 import sys
+import asyncio
+import concurrent.futures
 import argparse
 from llmengine.qwen3_reranker import *
 from llmengine.bge_reranker import *
 from llmengine.base_reranker import get_llm_class
 
 from appPublic.registerfunction import RegisterFunction
-from appPublic.worker import awaitify
 from appPublic.log import debug, exception
 from ahserver.serverenv import ServerEnv
 from ahserver.webapp import webserver
@@ -57,14 +58,44 @@ def init():
 	rf.register('rerank', rerank)
 	rf.register('docs', docs)
 
+# 2026-11-14 生产事故同款修复（与 embedding.py 一致）：
+# 每请求 awaitify() → 新 ThreadPoolExecutor → torch 拉新的 libgomp 线程池且不回收
+# → 线程/内存无界增长、空闲自旋吃 CPU。改为进程级固定线程池 + 限 torch 线程数。
+_EXECUTOR = None
+
+
+def _get_executor():
+	global _EXECUTOR
+	if _EXECUTOR is None:
+		try:
+			n = int(os.environ.get('RERANK_MAX_WORKERS', '1') or 1)
+		except ValueError:
+			n = 1
+		_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
+			max_workers=max(1, n), thread_name_prefix='rerank')
+	return _EXECUTOR
+
+
+def _limit_torch_threads():
+	try:
+		n = int(os.environ.get('RERANK_TORCH_THREADS',
+							   os.environ.get('OMP_NUM_THREADS', '4')) or 4)
+	except ValueError:
+		n = 4
+	try:
+		import torch
+		torch.set_num_threads(max(1, n))
+		debug(f'torch.set_num_threads({n})')
+	except Exception as e:
+		debug(f'torch thread limit skipped: {e}')
+
+
 async def docs(request, params_kw, *params, **kw):
 	return helptext
 
 async def rerank(request, params_kw, *params, **kw):
-	debug(f'{params_kw.query=}, {params_kw.documents=}, {params_kw.top_n=}')
 	se = ServerEnv()
 	engine = se.engine
-	f = awaitify(engine.rerank)
 	query = params_kw.query
 	if query is None:
 		e = Exception(f'query is None')
@@ -84,8 +115,10 @@ async def rerank(request, params_kw, *params, **kw):
 		top_n = 5
 	# 2026-10-30：原来把 params_kw.documents（可能是 str）传给引擎，
 	# 字符串会被逐字符迭代成 pairs；改为传规范化后的 list。
-	arr = await f(query, documents, top_n)
-	debug(f'{arr=}, type(arr)')
+	loop = asyncio.get_event_loop()
+	arr = await loop.run_in_executor(_get_executor(), engine.rerank,
+									 query, documents, top_n)
+	debug(f'rerank response: {len(arr) if hasattr(arr, "__len__") else "?"} items')
 	return arr
 
 def main():
@@ -102,6 +135,7 @@ def main():
 	se = ServerEnv()
 	se.engine = Klass(args.model_path)
 	se.engine.use_mps_if_prosible()
+	_limit_torch_threads()
 	workdir = args.workdir or os.getcwd()
 	port = args.port 
 	debug(f'{args=}')
