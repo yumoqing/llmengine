@@ -4,6 +4,10 @@ import sys
 import asyncio
 import concurrent.futures
 import argparse
+
+from llmengine.service_guard import set_default_env, start_guard
+set_default_env()   # 必须在下面 import torch（bgeembedding/qwen3embedding）之前
+
 from llmengine.qwen3embedding import *
 from llmengine.bgeembedding import *
 from llmengine.base_embedding import get_llm_class
@@ -129,6 +133,7 @@ def main():
 	se.engine = Klass(args.model_path)
 	se.engine.use_mps_if_prosible()
 	_limit_torch_threads()
+	start_guard('embedding', max_rss_mb=6144, max_threads=300)
 	workdir = args.workdir or os.getcwd()
 	port = args.port 
 	debug(f'{args=}')
