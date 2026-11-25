@@ -96,6 +96,29 @@ def _torch_export(model_id, max_length):
 	return ov_model
 
 
+def _ir_ready(xml):
+	"""IR 缓存可用性：xml 和同名 bin 都必须存在且非空。
+
+	只判 xml 会踩到「xml 写成功、bin 名不对」的半成品，加载时报
+	"Empty weights data in bin file or bin file cannot be found!"。
+	"""
+	if not os.path.exists(xml) or os.path.getsize(xml) == 0:
+		return False
+	bin_path = xml[:-4] + '.bin'
+	return os.path.exists(bin_path) and os.path.getsize(bin_path) > 0
+
+
+def _resolve_device(core, device=None, env='LLMENGINE_EMBED_DEVICE'):
+	"""AUTO（默认）= 有 GPU 用 GPU，否则 CPU；显式 GPU 但不可用时回落 CPU。"""
+	want = (device or os.environ.get(env) or 'AUTO').upper()
+	avail = core.available_devices
+	if want == 'AUTO':
+		want = 'GPU' if 'GPU' in avail else 'CPU'
+	if want.startswith('GPU') and not any(d.startswith('GPU') for d in avail):
+		want = 'CPU'
+	return want
+
+
 class OvEncoder:
 	"""OpenVINO 版本的文本向量化器：批处理 + 长度分桶 + 真实 token 计数。"""
 
@@ -109,7 +132,7 @@ class OvEncoder:
 		self.max_length = _resolve_max_length(self.tokenizer, self.config, max_length)
 
 		self.core = ov.Core()
-		self.device = self._resolve_device(self.core, device)
+		self.device = _resolve_device(self.core, device)
 		ir_xml = self._ensure_ir(ov)
 
 		props = {'PERFORMANCE_HINT': 'THROUGHPUT'}
@@ -129,21 +152,11 @@ class OvEncoder:
 	def device_name(self):
 		return self.device
 
-	def _resolve_device(self, core, device):
-		want = (device or os.environ.get('LLMENGINE_EMBED_DEVICE') or 'AUTO').upper()
-		avail = core.available_devices
-		if want == 'AUTO':
-			want = 'GPU' if 'GPU' in avail else 'CPU'
-		if want.startswith('GPU'):
-			if not any(d.startswith('GPU') for d in avail):
-				want = 'CPU'
-		return want
-
 	def _ensure_ir(self, ov):
 		"""IR 缓存到 <model_dir>/ov_ir/，优先用已有 ONNX 转（10 s，不必再跑 torch 导出）。"""
 		ir_dir = os.path.join(self.model_id, 'ov_ir')
 		xml = os.path.join(ir_dir, 'model.xml')
-		if os.path.exists(xml) and os.path.getsize(xml) > 0:
+		if _ir_ready(xml):
 			return xml
 		os.makedirs(ir_dir, exist_ok=True)
 		onnx_path = os.path.join(self.model_id, 'onnx', 'model.onnx')
@@ -151,9 +164,12 @@ class OvEncoder:
 			model = ov.convert_model(onnx_path)
 		else:
 			model = _torch_export(self.model_id, self.max_length)
-		tmp = xml + '.tmp.xml'
-		ov.save_model(model, tmp, compress_to_fp16=True)
-		os.replace(tmp, xml)
+		# 直接写最终路径：ov.save_model 的权重文件名由 xml 路径推导，
+		# 先存成 model.xml.tmp.xml 再 rename 会留下 model.xml.tmp.bin，
+		# 下次加载报 "Empty weights data in bin file or bin file cannot be found"。
+		ov.save_model(model, xml, compress_to_fp16=True)
+		if not _ir_ready(xml):
+			raise RuntimeError(f'IR 生成失败（bin 缺失）：{xml}')
 		return xml
 
 	def _request(self):
@@ -203,3 +219,129 @@ class OvEncoder:
 				vectors[j] = np.asarray(vecs[k], dtype=np.float32).tolist()
 
 		return vectors, int(sum(lens))
+
+
+DEFAULT_RERANK_BATCH = 32
+DEFAULT_RERANK_TOKEN_BUDGET = 16384
+
+
+def _torch_export_reranker(model_id, max_length):
+	"""没有现成 ONNX 时的退路：从 torch 权重导出 reranker 图，输出契约 = logits[batch]。"""
+	import torch
+	from transformers import AutoModelForSequenceClassification, AutoTokenizer
+
+	tk = AutoTokenizer.from_pretrained(model_id)
+	model = AutoModelForSequenceClassification.from_pretrained(model_id)
+	model.eval()
+
+	class Wrapper(torch.nn.Module):
+		def __init__(self, m):
+			super().__init__()
+			self.m = m
+
+		def forward(self, input_ids, attention_mask):
+			# 与 BgeReranker.compute_logits 一致：logits[:, -1, :].view(-1) 的等价物是
+			# logits.view(-1)（bge-reranker-base 的 num_labels=1，两者等价）
+			return self.m(input_ids=input_ids, attention_mask=attention_mask).logits.view(-1)
+
+	example = tk(['warmup'], padding=True, truncation=True,
+				 max_length=min(max_length, 128), return_tensors='pt')
+	import openvino as ov
+	with torch.no_grad():
+		return ov.convert_model(Wrapper(model), example_input=dict(example))
+
+
+class OvReranker:
+	"""OpenVINO 版 reranker，对外契约与 BgeReranker 完全一致：每条 pair 一个原始 logit。
+
+	与 embeddings 不同，reranker 的老代码本来就是「一次 padding 批处理」，所以这里没有
+	批处理红利，收益全部来自 iGPU + fp16。分桶仍然要做：pair 长度差异大（短 query+长 doc）。
+
+	分数语义必须保持不变：bge-reranker-base 的 num_labels=1，BgeReranker 返回的是**原始 logit**
+	（不是 sigmoid 概率），所以这里也直接取 logits[:, 0]，不要额外套 sigmoid。
+	"""
+
+	def __init__(self, model_id, device=None, max_length=None):
+		import openvino as ov
+		from transformers import AutoConfig, AutoTokenizer
+
+		self.model_id = model_id
+		self.tokenizer = AutoTokenizer.from_pretrained(model_id, use_fast=True)
+		self.config = AutoConfig.from_pretrained(model_id)
+		self.max_length = _resolve_max_length(self.tokenizer, self.config, max_length)
+
+		self.core = ov.Core()
+		self.device = _resolve_device(self.core, device, env='LLMENGINE_RERANK_DEVICE')
+		ir_xml = self._ensure_ir(ov)
+
+		props = {'PERFORMANCE_HINT': 'THROUGHPUT'}
+		props['INFERENCE_PRECISION_HINT'] = 'f32' if self.device == 'CPU' else 'f16'
+		self.compiled = self.core.compile_model(ir_xml, self.device, props)
+		self._in_ports = [p.get_any_name() for p in self.compiled.inputs]
+		self._local = threading.local()
+
+	@property
+	def device_name(self):
+		return self.device
+
+	def _ensure_ir(self, ov):
+		ir_dir = os.path.join(self.model_id, 'ov_ir')
+		xml = os.path.join(ir_dir, 'model.xml')
+		if _ir_ready(xml):
+			return xml
+		os.makedirs(ir_dir, exist_ok=True)
+		onnx_path = os.path.join(self.model_id, 'onnx', 'model.onnx')
+		if os.path.exists(onnx_path):
+			model = ov.convert_model(onnx_path)
+		else:
+			model = _torch_export_reranker(self.model_id, self.max_length)
+		ov.save_model(model, xml, compress_to_fp16=True)
+		if not _ir_ready(xml):
+			raise RuntimeError(f'IR 生成失败（bin 缺失）：{xml}')
+		return xml
+
+	def _request(self):
+		req = getattr(self._local, 'req', None)
+		if req is None:
+			req = self.compiled.create_infer_request()
+			self._local.req = req
+		return req
+
+	def score(self, input_ids, attention_mask, max_batch=None, token_budget=None):
+		"""返回 list[float]，顺序与入参一致（内部按长度分桶、跑完再摆回原位）。"""
+		input_ids = np.asarray(input_ids)
+		attention_mask = np.asarray(attention_mask)
+		n = input_ids.shape[0]
+		if n == 0:
+			return []
+		max_batch = int(max_batch or os.environ.get('LLMENGINE_RERANK_MAX_BATCH')
+						or DEFAULT_RERANK_BATCH)
+		token_budget = int(token_budget or os.environ.get('LLMENGINE_RERANK_TOKEN_BUDGET')
+						   or DEFAULT_RERANK_TOKEN_BUDGET)
+		lens = [max(int(x), 1) for x in attention_mask.sum(1)]
+		order = sorted(range(n), key=lambda i: lens[i])
+
+		scores = [0.0] * n
+		req = self._request()
+		pos = 0
+		while pos < n:
+			bucket = []
+			maxlen = 0
+			while pos < n:
+				j = order[pos]
+				newmax = max(maxlen, lens[j])
+				if bucket and (len(bucket) >= max_batch
+							   or newmax * (len(bucket) + 1) > token_budget):
+					break
+				bucket.append(j)
+				maxlen = newmax
+				pos += 1
+			idx = np.asarray(bucket)
+			# 原数组已 padding 到全局最长，切到桶内最长即可（右侧本就是 pad）
+			sub_ids = input_ids[idx][:, :maxlen].astype(np.int64)
+			sub_mask = attention_mask[idx][:, :maxlen].astype(np.int64)
+			out = req.infer({self._in_ports[0]: sub_ids, self._in_ports[1]: sub_mask})
+			vals = np.asarray(out[0]).reshape(-1)
+			for k, j in enumerate(bucket):
+				scores[j] = float(vals[k])
+		return scores

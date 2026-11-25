@@ -5,93 +5,96 @@ model_pathMap = {
 
 
 def llm_register(model_key, Klass):
-    model_pathMap[model_key] = Klass
+	model_pathMap[model_key] = Klass
 
 
 def get_llm_class(model_path):
-    for k, klass in model_pathMap.items():
-        if len(model_path.split(k)) > 1:
-            return klass
-    print(f'{model_pathMap=}')
-    return None
+	for k, klass in model_pathMap.items():
+		if len(model_path.split(k)) > 1:
+			return klass
+	print(f'{model_pathMap=}')
+	return None
 
 
 class BaseReranker:
-    def __init__(self, model_id, **kw):
-        self.model_id = model_id
+	def __init__(self, model_id, **kw):
+		self.model_id = model_id
 
-    def use_mps_if_prosible(self):
-        if torch.cuda.is_available():
-            device = torch.device("cuda")
-            self.model = self.model.to(device, dtype=torch.float16)
-        elif torch.backends.mps.is_available():
-            device = torch.device("mps")
-            self.model = self.model.to(device)
-        else:
-            # CPU fallback: keep model on CPU, ensure float32
-            self.model = self.model.float()
+	def use_mps_if_prosible(self):
+		# OpenVINO 等非 torch 后端不持有 self.model，直接跳过设备搬运
+		if getattr(self, 'model', None) is None:
+			return
+		if torch.cuda.is_available():
+			device = torch.device("cuda")
+			self.model = self.model.to(device, dtype=torch.float16)
+		elif torch.backends.mps.is_available():
+			device = torch.device("mps")
+			self.model = self.model.to(device)
+		else:
+			# CPU fallback: keep model on CPU, ensure float32
+			self.model = self.model.float()
 
-    def process_inputs(self, pairs):
-        inputs = self.tokenizer(
-            pairs, padding=False, truncation='longest_first',
-            return_attention_mask=False, max_length=self.max_length
-        )
-        inputs = self.tokenizer.pad(inputs, padding=True, return_tensors="pt", max_length=self.max_length)
-        for key in inputs:
-            inputs[key] = inputs[key].to(self.model.device)
-        return inputs
+	def process_inputs(self, pairs):
+		inputs = self.tokenizer(
+			pairs, padding=False, truncation='longest_first',
+			return_attention_mask=False, max_length=self.max_length
+		)
+		inputs = self.tokenizer.pad(inputs, padding=True, return_tensors="pt", max_length=self.max_length)
+		for key in inputs:
+			inputs[key] = inputs[key].to(self.model.device)
+		return inputs
 
-    def build_sys_prompt(self, sys_prompt):
-        return f"<|im_start|>system\n{sys_prompt}\n<|im_end|>"
+	def build_sys_prompt(self, sys_prompt):
+		return f"<|im_start|>system\n{sys_prompt}\n<|im_end|>"
 
-    def build_user_prompt(self, query, doc, instruct=''):
-        return f'<|im_start|>user\n<Instruct>: {instruct}\n<Query>:{query}\n<Document>:\n{doc}<|im_end|>'
+	def build_user_prompt(self, query, doc, instruct=''):
+		return f'<|im_start|>user\n<Instruct>: {instruct}\n<Query>:{query}\n<Document>:\n{doc}<|im_end|>'
 
-    def build_assistant_prompt(self):
-        return "<|im_start|>assistant\n\n\n"
+	def build_assistant_prompt(self):
+		return "<|im_start|>assistant\n\n\n"
 
-    def compute_logits(self, inputs, **kwargs):
-        batch_scores = self.model(**inputs).logits[:, -1, :]
-        batch_scores = torch.nn.functional.log_softmax(batch_scores, dim=1)
-        scores = batch_scores[:, 1].exp().tolist()
-        return scores
+	def compute_logits(self, inputs, **kwargs):
+		batch_scores = self.model(**inputs).logits[:, -1, :]
+		batch_scores = torch.nn.functional.log_softmax(batch_scores, dim=1)
+		scores = batch_scores[:, 1].exp().tolist()
+		return scores
 
-    def build_pairs(self, query, docs, sys_prompt="", task=""):
-        sys_str = self.build_sys_prompt(sys_prompt)
-        ass_str = self.build_assistant_prompt()
-        pairs = [sys_str + '\n' + self.build_user_prompt(task, query, doc) + '\n' + ass_str for doc in docs]
-        return pairs
+	def build_pairs(self, query, docs, sys_prompt="", task=""):
+		sys_str = self.build_sys_prompt(sys_prompt)
+		ass_str = self.build_assistant_prompt()
+		pairs = [sys_str + '\n' + self.build_user_prompt(task, query, doc) + '\n' + ass_str for doc in docs]
+		return pairs
 
-    def rerank(self, query, docs, top_n, sys_prompt="", task=""):
-        pairs = self.build_pairs(query, docs, sys_prompt=sys_prompt, task=task)
-        with torch.no_grad():
-            inputs = self.process_inputs(pairs)
-            # 真实 token 数（截断后的实际输入）作为计费事实源。
-            # 2026-10-30 前 usage 恒为 0，导致挂 ppid 的 rerank 调用出账 0 元。
-            if 'attention_mask' in inputs:
-                prompt_tokens = int(inputs['attention_mask'].sum())
-            else:
-                prompt_tokens = int(sum(len(ids) for ids in inputs['input_ids']))
-            scores = self.compute_logits(inputs)
-        data = []
-        for i, s in enumerate(scores):
-            d = {
-                'index': i,
-                'relevance_score': s
-            }
-            data.append(d)
-        data = sorted(data,
-                      key=lambda x: x["relevance_score"],
-                      reverse=True)
-        if top_n and len(data) > top_n:
-            data = data[:top_n]
-        ret = {
-            "data": data,
-            "object": "rerank.result",
-            "model": getattr(self, 'model_name', self.model_id),
-            "usage": {
-                "prompt_tokens": prompt_tokens,
-                "total_tokens": prompt_tokens
-            }
-        }
-        return ret
+	def rerank(self, query, docs, top_n, sys_prompt="", task=""):
+		pairs = self.build_pairs(query, docs, sys_prompt=sys_prompt, task=task)
+		with torch.no_grad():
+			inputs = self.process_inputs(pairs)
+			# 真实 token 数（截断后的实际输入）作为计费事实源。
+			# 2026-10-30 前 usage 恒为 0，导致挂 ppid 的 rerank 调用出账 0 元。
+			if 'attention_mask' in inputs:
+				prompt_tokens = int(inputs['attention_mask'].sum())
+			else:
+				prompt_tokens = int(sum(len(ids) for ids in inputs['input_ids']))
+			scores = self.compute_logits(inputs)
+		data = []
+		for i, s in enumerate(scores):
+			d = {
+				'index': i,
+				'relevance_score': s
+			}
+			data.append(d)
+		data = sorted(data,
+					  key=lambda x: x["relevance_score"],
+					  reverse=True)
+		if top_n and len(data) > top_n:
+			data = data[:top_n]
+		ret = {
+			"data": data,
+			"object": "rerank.result",
+			"model": getattr(self, 'model_name', self.model_id),
+			"usage": {
+				"prompt_tokens": prompt_tokens,
+				"total_tokens": prompt_tokens
+			}
+		}
+		return ret
