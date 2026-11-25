@@ -109,20 +109,66 @@ def _ir_ready(xml):
 
 
 def _resolve_device(core, device=None, env='LLMENGINE_EMBED_DEVICE'):
-	"""AUTO（默认）= 有 GPU 用 GPU，否则 CPU；显式 GPU 但不可用时回落 CPU。"""
+	"""AUTO（默认）= 有加速设备就用，否则 CPU；显式指定但不可用时回落 CPU。
+	OpenVINO 里 Intel 核显与独显同名 'GPU'(/'GPU.0'/'GPU.1')，装了 NVIDIA 插件则是 'NVIDIA'，
+	所以不要硬编码 'GPU'，取第一个加速设备。
+	"""
 	want = (device or os.environ.get(env) or 'AUTO').upper()
-	avail = core.available_devices
+	accel = [d for d in core.available_devices
+			 if d.startswith('GPU') or d.startswith('NVIDIA')]
 	if want == 'AUTO':
-		want = 'GPU' if 'GPU' in avail else 'CPU'
-	if want.startswith('GPU') and not any(d.startswith('GPU') for d in avail):
+		want = accel[0] if accel else 'CPU'
+	elif not any(d == want or d.startswith(want + '.') for d in core.available_devices):
+		# 显式点名了机器上不存在的设备（GPU.1 / NVIDIA 之类）→ 回落 CPU，
+		# 不能在 compile_model 时才炸。前缀匹配是为了 'GPU' 能命中实际的 'GPU.0'。
 		want = 'CPU'
 	return want
+
+
+def describe_device(core, device):
+	"""日志用：把 'GPU' 展开成真实型号，方便一眼判断跑的是 iGPU 还是独显。"""
+	try:
+		return f'{device}({core.get_property(device, "FULL_DEVICE_NAME")})'
+	except Exception:
+		return device
+
+
+def _precision(device, override=None):
+	"""精度：CPU 用 f32，加速设备用 f16（权重已是 fp16 IR）；可用环境变量强制覆盖。"""
+	v = (override or '').strip().lower()
+	if v in ('f32', 'f16', 'bf16'):
+		return v
+	return 'f32' if device == 'CPU' else 'f16'
+
+class _TorchHasBetterAccelerator(Exception):
+	"""同机 torch 有 CUDA/MPS —— 这时 torch 后端更快，auto 模式据此回退。"""
+
+
+def _guard_not_slower_than_torch():
+	"""auto 模式的选路守卫：CUDA/MPS 机器让给 torch，其余（Intel iGPU、纯 CPU）走 OV。
+
+	判断依据是「哪边更快」，不是「谁更先进」：
+	- torch 有 CUDA：torch+cuBLAS 成熟，OV 的 NVIDIA 插件较新，默认不赌，显式设
+	  LLMENGINE_EMBED_BACKEND=ov 才用 OV。
+	- torch 有 MPS：OV 在 Mac 上只能 CPU，明显更慢。
+	- 纯 CPU：OV 靠批处理仍比 torch 快 1.9~2.5 倍，必须在 CPU 上走 OV，不能抛。
+	"""
+	try:
+		import torch
+	except Exception:
+		return
+	if torch.cuda.is_available():
+		raise _TorchHasBetterAccelerator('torch 有 CUDA')
+	mps = getattr(torch.backends, 'mps', None)
+	if mps is not None and mps.is_available():
+		raise _TorchHasBetterAccelerator('torch 有 MPS')
 
 
 class OvEncoder:
 	"""OpenVINO 版本的文本向量化器：批处理 + 长度分桶 + 真实 token 计数。"""
 
-	def __init__(self, model_id, device=None, max_length=None):
+	def __init__(self, model_id, device=None, max_length=None, strict=False):
+		"""strict=True 表示调用方显式指定了 ov 后端，此时不再做「torch 更快就让路」的守卫。"""
 		import openvino as ov
 		from transformers import AutoConfig, AutoTokenizer
 
@@ -133,10 +179,14 @@ class OvEncoder:
 
 		self.core = ov.Core()
 		self.device = _resolve_device(self.core, device)
+		if not strict:
+			# auto 模式：本机 torch 有 CUDA/MPS 时让路（显式 ov 则照用）
+			_guard_not_slower_than_torch()
 		ir_xml = self._ensure_ir(ov)
 
 		props = {'PERFORMANCE_HINT': 'THROUGHPUT'}
-		props['INFERENCE_PRECISION_HINT'] = 'f32' if self.device == 'CPU' else 'f16'
+		props['INFERENCE_PRECISION_HINT'] = _precision(
+			self.device, os.environ.get('LLMENGINE_EMBED_PRECISION'))
 		self.compiled = self.core.compile_model(ir_xml, self.device, props)
 
 		outs = list(self.compiled.outputs)
@@ -150,7 +200,7 @@ class OvEncoder:
 
 	@property
 	def device_name(self):
-		return self.device
+		return describe_device(self.core, self.device)
 
 	def _ensure_ir(self, ov):
 		"""IR 缓存到 <model_dir>/ov_ir/，优先用已有 ONNX 转（10 s，不必再跑 torch 导出）。"""
@@ -261,7 +311,8 @@ class OvReranker:
 	（不是 sigmoid 概率），所以这里也直接取 logits[:, 0]，不要额外套 sigmoid。
 	"""
 
-	def __init__(self, model_id, device=None, max_length=None):
+	def __init__(self, model_id, device=None, max_length=None, strict=False):
+		"""strict=True 表示调用方显式指定了 ov 后端，此时不再做「torch 更快就让路」的守卫。"""
 		import openvino as ov
 		from transformers import AutoConfig, AutoTokenizer
 
@@ -272,17 +323,21 @@ class OvReranker:
 
 		self.core = ov.Core()
 		self.device = _resolve_device(self.core, device, env='LLMENGINE_RERANK_DEVICE')
+		if not strict:
+			# auto 模式：本机 torch 有 CUDA/MPS 时让路（显式 ov 则照用）
+			_guard_not_slower_than_torch()
 		ir_xml = self._ensure_ir(ov)
 
 		props = {'PERFORMANCE_HINT': 'THROUGHPUT'}
-		props['INFERENCE_PRECISION_HINT'] = 'f32' if self.device == 'CPU' else 'f16'
+		props['INFERENCE_PRECISION_HINT'] = _precision(
+			self.device, os.environ.get('LLMENGINE_RERANK_PRECISION'))
 		self.compiled = self.core.compile_model(ir_xml, self.device, props)
 		self._in_ports = [p.get_any_name() for p in self.compiled.inputs]
 		self._local = threading.local()
 
 	@property
 	def device_name(self):
-		return self.device
+		return describe_device(self.core, self.device)
 
 	def _ensure_ir(self, ov):
 		ir_dir = os.path.join(self.model_id, 'ov_ir')

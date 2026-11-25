@@ -31,7 +31,7 @@ class BgeEmbedding(BaseEmbedding):
 		if choice in ('auto', 'ov', 'openvino'):
 			try:
 				from llmengine.ov_runtime import OvEncoder
-				self.ov = OvEncoder(model_id, max_length=max_length)
+				self.ov = OvEncoder(model_id, max_length=max_length, strict=(choice != 'auto'))
 				print(f'[bgeembedding] backend=openvino device={self.ov.device_name} '
 					  f'max_length={self.ov.max_length}')
 			except Exception as e:

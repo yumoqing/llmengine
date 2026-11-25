@@ -23,7 +23,7 @@ class BgeReranker(BaseReranker):
 		if choice in ('auto', 'ov', 'openvino'):
 			try:
 				from llmengine.ov_runtime import OvReranker
-				self.ov = OvReranker(model_id, max_length=max_length)
+				self.ov = OvReranker(model_id, max_length=max_length, strict=(choice != 'auto'))
 			except Exception as e:
 				if choice != 'auto':
 					raise
