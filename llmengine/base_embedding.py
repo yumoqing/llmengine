@@ -17,6 +17,9 @@ def get_llm_class(model_path):
 class BaseEmbedding:
 	
 	def use_mps_if_prosible(self):
+		if getattr(self, 'model', None) is None:
+			# OpenVINO 等非 torch 后端没有 self.model，直接返回
+			return
 		if torch.backends.mps.is_available():
 			device = torch.device("mps")
 			self.model = self.model.to(device)
@@ -25,7 +28,12 @@ class BaseEmbedding:
 		return self.model.encode(input)
 
 	def embeddings(self, input):
-		es = self.encode(input)
+		r = self.encode(input)
+		# encode() 可以返回 (vectors, prompt_tokens)，也可以只返回 vectors（旧后端）
+		if isinstance(r, tuple) and len(r) == 2:
+			es, prompt_tokens = r
+		else:
+			es, prompt_tokens = r, 0
 		data = []
 		for i, e in enumerate(es):
 			d = {
@@ -38,13 +46,13 @@ class BaseEmbedding:
 			"object": "list",
 			"data": data,
 			"model": self.model_name,
+			# 真实 token 数作为计费事实源。以前恒写 0，挂 ppid 也永远出账 0 元。
 			"usage": {
-				"prompt_tokens": 0,
-				"total_tokens": 0
+				"prompt_tokens": int(prompt_tokens),
+				"total_tokens": int(prompt_tokens)
 			}
 		}
 	
 	def similarity(self, qvector, dcovectors):
 		s = self.model.similarity([qvector], docvectors)
 		return s[0]
-
